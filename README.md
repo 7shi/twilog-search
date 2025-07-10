@@ -11,7 +11,7 @@ Twilogのエクスポートデータからベクトル検索とタグ検索を�
 
 ### 1. ベクトル化段階（必須）
 ```bash
-uv run vectorize.py
+uv run src/vectorize.py
 ```
 - **入力**: twilog.csv（直接読み込み）
 - **出力**: embeddings/ディレクトリ（226個の.safetensorsファイル）
@@ -21,7 +21,7 @@ uv run vectorize.py
 
 ### 2. 検索サーバー起動段階
 ```bash
-uv run twilog_server.py start
+uv run src/twilog_server.py start
 ```
 - **入力**: embeddings/ディレクトリ
 - **機能**: WebSocketベースの検索サーバー（デーモン）
@@ -31,7 +31,7 @@ uv run twilog_server.py start
 
 ### 3. ベクトル検索段階
 ```bash
-uv run search.py
+uv run src/search.py
 ```
 - **入力**: twilog.csv + twilog_server.py（WebSocket通信）
 - **機能**: 意味的検索による投稿発見（リモート検索）
@@ -44,7 +44,7 @@ uv run search.py
 ### 4. MCP統合段階（オプション）
 ```bash
 # Node.js MCPサーバー起動と対話的クライアント
-uv run mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js --db /path/to/twilog.db
+uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js --db /path/to/twilog.db
 ```
 - **Node.js MCPサーバー**: TypeScript実装のMCPサーバー（twilog-mcp-server）
 - **MCPラッパー**: 対話的JSON-RPCクライアント（mcp_wrap.py）
