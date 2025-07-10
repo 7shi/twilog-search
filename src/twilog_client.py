@@ -4,7 +4,7 @@ Twilog検索サーバー用クライアント
 """
 import asyncio
 import argparse
-from typing import List, Tuple, Optional
+from typing import Dict, Optional
 from urllib.parse import urlparse
 from embed_client import EmbedClient, EmbedCommand
 
@@ -25,7 +25,7 @@ class TwilogClient(EmbedClient):
         port = parsed_url.port or 8765
         super().__init__(host=host, port=port)
     
-    async def vector_search(self, query_text: str, top_k: Optional[int] = None) -> List[Tuple[int, float]]:
+    async def vector_search(self, query_text: str, top_k: Optional[int] = None) -> Dict:
         """
         検索を実行
         
