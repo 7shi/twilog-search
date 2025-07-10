@@ -15,6 +15,7 @@ from rich.panel import Panel
 from rich.rule import Rule
 from simple_term_menu import TerminalMenu
 from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_no_menu
+from ui_settings import UserFilterSettings, DateFilterSettings, TopKSettings
 from twilog_client import TwilogClient
 from data_csv import TwilogDataAccess
 
@@ -37,13 +38,13 @@ class TwilogVectorSearch:
         self.data_access = TwilogDataAccess(db_path)
         
         # ユーザーフィルタリング設定
-        self.user_filter = {}
+        self.user_filter_settings = UserFilterSettings({})
         
         # 日付フィルタリング設定
-        self.date_filter = {}
+        self.date_filter_settings = DateFilterSettings()
         
         # 表示件数設定
-        self.top_k = 10
+        self.top_k_settings = TopKSettings(10)
         
         # TwilogClientの初期化
         self.client = TwilogClient(websocket_url)
@@ -51,6 +52,9 @@ class TwilogVectorSearch:
         # ユーザー情報の読み込み
         print("ユーザー情報を読み込み中...")
         self.post_user_map, self.user_post_counts = self.data_access.load_user_data()
+        
+        # 設定クラスにユーザー情報を設定
+        self.user_filter_settings = UserFilterSettings(self.user_post_counts)
         
         # WebSocketサーバー接続確認
         try:
@@ -88,29 +92,7 @@ class TwilogVectorSearch:
     
     def _is_user_allowed(self, user: str) -> bool:
         """ユーザーがフィルタリング条件を満たすかチェック"""
-        if not self.user_filter:
-            return True
-        
-        # includes/excludesのチェック（排他的）
-        if "includes" in self.user_filter:
-            if user not in self.user_filter["includes"]:
-                return False
-        elif "excludes" in self.user_filter:
-            if user in self.user_filter["excludes"]:
-                return False
-        
-        # threshold系のチェック（組み合わせ可能）
-        post_count = self.user_post_counts.get(user, 0)
-        
-        if "threshold_min" in self.user_filter:
-            if post_count < self.user_filter["threshold_min"]:
-                return False
-                
-        if "threshold_max" in self.user_filter:
-            if post_count > self.user_filter["threshold_max"]:
-                return False
-        
-        return True
+        return self.user_filter_settings.is_user_allowed(user)
     
     def _parse_date(self, date_str: str) -> Optional[str]:
         """日付文字列をパースしてタイムスタンプ形式に変換"""
@@ -142,366 +124,22 @@ class TwilogVectorSearch:
     
     def _is_date_allowed(self, timestamp: str) -> bool:
         """投稿日時がフィルタリング条件を満たすかチェック"""
-        if not self.date_filter:
-            return True
-            
-        if not timestamp:
-            return True
-            
-        try:
-            post_dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-            
-            if "from" in self.date_filter and "to" not in self.date_filter:
-                # from のみ指定
-                from_dt = datetime.strptime(self.date_filter["from"], '%Y-%m-%d %H:%M:%S')
-                return post_dt >= from_dt
-                
-            elif "to" in self.date_filter and "from" not in self.date_filter:
-                # to のみ指定
-                to_dt = datetime.strptime(self.date_filter["to"], '%Y-%m-%d %H:%M:%S')
-                return post_dt <= to_dt
-                
-            elif "from" in self.date_filter and "to" in self.date_filter:
-                # from-to 両方指定
-                from_dt = datetime.strptime(self.date_filter["from"], '%Y-%m-%d %H:%M:%S')
-                to_dt = datetime.strptime(self.date_filter["to"], '%Y-%m-%d %H:%M:%S')
-                return from_dt <= post_dt <= to_dt
-                
-        except (ValueError, TypeError):
-            return True
-            
-        return True
+        return self.date_filter_settings.is_date_allowed(timestamp)
     
     
     def _user_filter_menu(self):
         """ユーザーフィルタリングメニュー"""
-        while True:
-            print(f"\n=== ユーザーフィルタリング設定 ===")
-            print(f"現在の設定: {self._format_filter_status()}")
-            
-            options = [
-                "[1] none（すべてのユーザー）",
-                "[2] includes（指定ユーザーのみ）",
-                "[3] excludes（指定ユーザーを除外）",
-                "[4] threshold min（投稿数下限）",
-                "[5] threshold max（投稿数上限）"
-            ]
-            
-            terminal_menu = TerminalMenu(
-                options,
-                title="フィルター方式を選択してください (数字キー: 直接選択, ↑↓: 移動, Enter: 決定, Esc: 戻る):",
-                show_search_hint=True
-            )
-            
-            choice_index = terminal_menu.show()
-            
-            if choice_index is None:
-                return
-            
-            if choice_index == 0:  # none
-                self.user_filter = {}
-                print("フィルタリングを無効にしました")
-                return  # noneは即座に抜ける
-                
-            elif choice_index == 1:  # includes
-                users_input = safe_text_input(
-                    "ユーザー名をコンマ区切りで入力: ",
-                    history="user"
-                )
-                
-                if users_input is None:
-                    # Ctrl+Dの場合、何も変更せずにメニューに戻る
-                    continue
-                elif users_input.strip():
-                    users = [user.strip() for user in users_input.split(',') if user.strip()]
-                    # includes設定時は他の設定をすべてクリア
-                    self.user_filter = {"includes": users}
-                    console = Console()
-                    console.print(f"[green]includes設定: {len(users)}人のユーザーを対象[/green]")
-                    return  # includesは即座に抜ける
-                else:
-                    # 無入力の場合、値を消去するか確認
-                    current_value = self.user_filter.get("includes", None)
-                    if current_value is not None:
-                        should_clear = yes_no_menu(
-                            f"現在のincludes設定({len(current_value)}人)を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            console = Console()
-                            del self.user_filter["includes"]
-                            console.print(f"[green]includes設定を消去しました[/green]")
-                            console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                    # 回答に関わらずメニューに戻る
-                    continue
-                    
-            elif choice_index == 2:  # excludes
-                users_input = safe_text_input(
-                    "除外ユーザー名をコンマ区切りで入力: ",
-                    history="user"
-                )
-                
-                if users_input is None:
-                    # Ctrl+Dの場合、何も変更せずにメニューに戻る
-                    continue
-                elif users_input.strip():
-                    users = [user.strip() for user in users_input.split(',') if user.strip()]
-                    # excludes設定時は他の設定をすべてクリア
-                    self.user_filter = {"excludes": users}
-                    console = Console()
-                    console.print(f"[green]excludes設定: {len(users)}人のユーザーを除外[/green]")
-                    return  # excludesは即座に抜ける
-                else:
-                    # 無入力の場合、値を消去するか確認
-                    current_value = self.user_filter.get("excludes", None)
-                    if current_value is not None:
-                        should_clear = yes_no_menu(
-                            f"現在のexcludes設定({len(current_value)}人)を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            console = Console()
-                            del self.user_filter["excludes"]
-                            console.print(f"[green]excludes設定を消去しました[/green]")
-                            console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                    # 回答に関わらずメニューに戻る
-                    continue
-                    
-            elif choice_index == 3:  # threshold min
-                min_posts = safe_number_input(
-                    "投稿数下限を入力: ",
-                    history="threshold",
-                    min_val=1
-                )
-                
-                if min_posts is None:
-                    # Ctrl+Dの場合、何も変更せずにメニューに戻る
-                    continue
-                elif min_posts == "":
-                    # 無入力の場合、値を消去するか確認
-                    current_value = self.user_filter.get("threshold_min", None)
-                    if current_value is not None:
-                        should_clear = yes_no_menu(
-                            f"現在のthreshold min設定({current_value})を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            console = Console()
-                            del self.user_filter["threshold_min"]
-                            console.print(f"[green]threshold min設定を消去しました[/green]")
-                            console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                    # 回答に関わらずメニューに戻る
-                    continue
-                
-                # 上限との整合性チェック
-                console = Console()
-                if "threshold_max" in self.user_filter:
-                    max_posts = self.user_filter["threshold_max"]
-                    if min_posts >= max_posts:
-                        console.print(f"[yellow]threshold max設定({max_posts})がthreshold min設定({min_posts})と矛盾するため削除しました[/yellow]")
-                
-                # includes/excludesを削除し、threshold系のみ保持
-                new_filter = {"threshold_min": min_posts}
-                if "threshold_max" in self.user_filter:
-                    max_posts = self.user_filter["threshold_max"]
-                    if min_posts < max_posts:
-                        new_filter["threshold_max"] = max_posts
-                self.user_filter = new_filter
-                    
-                console.print(f"[green]threshold min={min_posts}: 投稿数{min_posts}以上のユーザーを対象[/green]")
-                console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                # threshold minはメニューに戻る（continueで次のループへ）
-                    
-            elif choice_index == 4:  # threshold max
-                # 下限が設定されている場合は、それより大きい値を要求
-                min_threshold = None
-                if "threshold_min" in self.user_filter:
-                    min_threshold = self.user_filter["threshold_min"] + 1
-                
-                max_posts = safe_number_input(
-                    "投稿数上限を入力: ",
-                    history="threshold",
-                    min_val=min_threshold or 1
-                )
-                
-                if max_posts is None:
-                    # Ctrl+Dの場合、何も変更せずにメニューに戻る
-                    continue
-                elif max_posts == "":
-                    # 無入力の場合、値を消去するか確認
-                    current_value = self.user_filter.get("threshold_max", None)
-                    if current_value is not None:
-                        should_clear = yes_no_menu(
-                            f"現在のthreshold max設定({current_value})を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            console = Console()
-                            del self.user_filter["threshold_max"]
-                            console.print(f"[green]threshold max設定を消去しました[/green]")
-                            console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                    # 回答に関わらずメニューに戻る
-                    continue
-                
-                # 下限との整合性チェック
-                console = Console()
-                if "threshold_min" in self.user_filter:
-                    min_posts = self.user_filter["threshold_min"]
-                    if max_posts <= min_posts:
-                        console.print(f"[yellow]threshold min設定({min_posts})がthreshold max設定({max_posts})と矛盾するため削除しました[/yellow]")
-                
-                # includes/excludesを削除し、threshold系のみ保持
-                new_filter = {"threshold_max": max_posts}
-                if "threshold_min" in self.user_filter:
-                    min_posts = self.user_filter["threshold_min"]
-                    if min_posts < max_posts:
-                        new_filter["threshold_min"] = min_posts
-                self.user_filter = new_filter
-                    
-                console.print(f"[green]threshold max={max_posts}: 投稿数{max_posts}以下のユーザーを対象[/green]")
-                console.print(f"[dim]現在の設定: {self._format_filter_status()}[/dim]")
-                # threshold maxはメニューに戻る（continueで次のループへ）
+        self.user_filter_settings.show_menu()
     
-    def _format_filter_status(self) -> str:
-        """フィルタリング状態を文字列でフォーマット"""
-        if not self.user_filter:
-            return "すべてのユーザー"
-        
-        status_parts = []
-        
-        # includes/excludesは排他的
-        if "includes" in self.user_filter:
-            status_parts.append(f"includes ({len(self.user_filter['includes'])}人)")
-        elif "excludes" in self.user_filter:
-            status_parts.append(f"excludes ({len(self.user_filter['excludes'])}人)")
-        
-        # threshold系は組み合わせ可能
-        if "threshold_min" in self.user_filter:
-            status_parts.append(f"min={self.user_filter['threshold_min']}")
-        if "threshold_max" in self.user_filter:
-            status_parts.append(f"max={self.user_filter['threshold_max']}")
-        
-        return " + ".join(status_parts) if status_parts else "unknown"
     
     def _top_k_menu(self):
         """表示件数設定メニュー"""
-        console = Console()
-        console.print(f"\n[bold]=== 表示件数設定 ===[/bold]")
-        console.print(f"現在の設定: {self.top_k}件")
-        
-        new_top_k = safe_number_input(
-            "表示件数を入力: ",
-            history="top_k",
-            min_val=1,
-            max_val=100,
-            default=self.top_k
-        )
-        
-        if new_top_k is not None:
-            self.top_k = new_top_k
-            console.print(f"[green]表示件数を{new_top_k}件に設定しました[/green]")
+        self.top_k_settings.show_menu()
     
     def _date_filter_menu(self):
         """日付フィルタリングメニュー"""
-        print(f"\n=== 日付フィルタリング設定 ===")
-        
-        while True:
-            print(f"現在の設定: {self._format_date_filter_status()}")
-            options = [
-                "[1] all（すべての日付）",
-                "[2] from（開始日時を設定）",
-                "[3] to（終了日時を設定）"
-            ]
-            terminal_menu = TerminalMenu(
-                options,
-                title="日付フィルター方式を選択してください (数字キー: 直接選択, ↑↓: 移動, Enter: 決定, Esc: 戻る):",
-                show_search_hint=True
-            )
-            choice_index = terminal_menu.show()
-            
-            if choice_index is None:
-                return
-            
-            if choice_index == 0:  # all
-                self.date_filter = {}
-                print("日付フィルタリングを無効にしました")
-                return  # allは即座に抜ける
-                
-            elif choice_index == 1:  # from
-                # 日付入力処理をインライン展開
-                from_date = safe_date_input("開始日時を入力: ", "date_input")
-                
-                if from_date is None:
-                    continue  # Ctrl+Dの場合はメニューに戻る
-                elif from_date == "":
-                    # 無入力の場合、値を消去するか確認
-                    if "from" in self.date_filter:
-                        current_value = self.date_filter["from"][:10]
-                        should_clear = yes_no_menu(
-                            f"現在のfrom設定({current_value})を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            del self.date_filter["from"]
-                            console.print(f"[green]from設定を消去しました[/green]")
-                else:
-                    # 適切な日付が入力された場合の処理
-                    console = Console()
-                    # toは引き継ぐが、他の設定はクリア
-                    new_filter = {"from": from_date}
-                    if "to" in self.date_filter:
-                        to_date = self.date_filter["to"]
-                        if from_date < to_date:
-                            new_filter["to"] = to_date
-                        else:
-                            console.print(f"[yellow]to設定({to_date[:10]})がfrom設定({from_date[:10]})と矛盾するため削除しました[/yellow]")
-                    self.date_filter = new_filter
-                    console.print(f"[green]from設定: {from_date}以降の投稿を対象[/green]")
-                # from設定後はメニューに戻る
-                    
-            elif choice_index == 2:  # to
-                # 日付入力処理をインライン展開
-                to_date = safe_date_input("終了日時を入力: ", "date_input")
-                
-                if to_date is None:
-                    continue  # Ctrl+Dの場合はメニューに戻る
-                elif to_date == "":
-                    # 無入力の場合、値を消去するか確認
-                    if "to" in self.date_filter:
-                        current_value = self.date_filter["to"][:10]
-                        should_clear = yes_no_menu(
-                            f"現在のto設定({current_value})を消去しますか？",
-                            default_yes=False
-                        )
-                        if should_clear:
-                            del self.date_filter["to"]
-                            console.print(f"[green]to設定を消去しました[/green]")
-                else:
-                    # 適切な日付が入力された場合の処理
-                    console = Console()
-                    # fromは引き継ぐが、他の設定はクリア
-                    new_filter = {"to": to_date}
-                    if "from" in self.date_filter:
-                        from_date = self.date_filter["from"]
-                        if from_date < to_date:
-                            new_filter["from"] = from_date
-                        else:
-                            console.print(f"[yellow]from設定({from_date[:10]})がto設定({to_date[:10]})と矛盾するため削除しました[/yellow]")
-                    self.date_filter = new_filter
-                    console.print(f"[green]to設定: {to_date}以前の投稿を対象[/green]")
-                # to設定後はメニューに戻る
+        self.date_filter_settings.show_menu()
     
-    def _format_date_filter_status(self) -> str:
-        """日付フィルタリング状態を文字列でフォーマット"""
-        if not self.date_filter:
-            return "すべての日付"
-        elif "from" in self.date_filter and "to" not in self.date_filter:
-            return f"from {self.date_filter['from']}"
-        elif "to" in self.date_filter and "from" not in self.date_filter:
-            return f"to {self.date_filter['to']}"
-        elif "from" in self.date_filter and "to" in self.date_filter:
-            return f"from {self.date_filter['from']} to {self.date_filter['to']}"
-        return "unknown"
     
     def _show_help(self):
         """ヘルプメッセージを表示"""
@@ -634,7 +272,7 @@ def main():
         results = []
         for result in search_system.search(query):
             results.append(result)
-            if len(results) >= search_system.top_k:
+            if len(results) >= search_system.top_k_settings.top_k:
                 break
         
         if not results:
@@ -643,7 +281,7 @@ def main():
         
         # 結果表示
         console = Console()
-        rank_width = len(str(search_system.top_k))
+        rank_width = len(str(search_system.top_k_settings.top_k))
         
         for rank, similarity, post_info in results:
             user = post_info['user'] or 'unknown'
