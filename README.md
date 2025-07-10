@@ -36,20 +36,21 @@ uv run src/search.py
 - **入力**: twilog.csv + twilog_server.py（WebSocket通信）
 - **機能**: 意味的検索による投稿発見（リモート検索）
 - **表示**: ランク・類似度・ユーザー・日時・URL・内容
-- **特徴**: 対話的検索インターフェース、ユーザーフィルタリング、表示件数調整
-- **コマンド**: `/help`でヘルプ、`/user`でフィルタリング、`/top`で表示件数設定
+- **特徴**: 対話的検索インターフェース（フィルタリング機能は一時無効化）
+- **コマンド**: `/help`でヘルプ（ユーザー・日付・表示件数設定は現在利用不可）
 - **起動時間**: 数秒（軽量クライアント）
-- **アーキテクチャ**: data_csv.pyによるCSVベースデータアクセス
+- **アーキテクチャ**: twilog_server.pyのsearch_similarメソッド使用
 
 ### 4. MCP統合段階（オプション）
 ```bash
 # Node.js MCPサーバー起動と対話的クライアント
-uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js --db /path/to/twilog.db
+uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js
 ```
-- **Node.js MCPサーバー**: TypeScript実装のMCPサーバー（twilog-mcp-server）
+- **Node.js MCPサーバー**: TypeScript実装のMCPラッパー（twilog-mcp-server）
 - **MCPラッパー**: 対話的JSON-RPCクライアント（mcp_wrap.py）
 - **機能**: ツール一覧表示、YAML出力、ヘルプ機能（`/help <tool_name>`）
 - **対応ツール**: 類似検索、テキスト検索、統計情報取得、ベクトル化
+- **アーキテクチャ**: twilog_server.pyへの単純ラッパー（SQLite不要）
 
 
 ## データフロー
@@ -57,11 +58,11 @@ uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js --db /pa
 ```
 twilog.csv (227,011件)
     ↓ vectorize.py (CSVから直接ベクトル化)
-embeddings/ (226個の.safetensorsファイル)
-    ↓ twilog_server.py (WebSocketサーバー)
-    ↓ search.py (CSVベース検索)
-    ↓ twilog-mcp-server (MCPサーバー)
-    ↓ mcp_wrap.py (MCP対話的クライアント)
+embeddings/ (226個の.safetensorsファイル + meta.json)
+    ↓ twilog_server.py (WebSocketサーバー + SearchEngine統合 + MCP互換メソッド)
+    ├─ search.py (軽量フロントエンド)
+    └─ twilog-mcp-server (単純WebSocketラッパー) 
+        └─ mcp_wrap.py (MCP対話的クライアント)
 ```
 
 ## 現在の状況
@@ -87,6 +88,7 @@ embeddings/ (226個の.safetensorsファイル)
 - **検索アーキテクチャ**: WebSocketベースのサーバー・クライアント分離
 - **処理方式**: 分割処理による安全性確保
 - **中断・再開**: vectorize.pyで対応
+- **統合アーキテクチャ**: SearchEngine中心の一元化（MCP/CLI統一）
 
 ## 依存関係
 
@@ -94,9 +96,10 @@ embeddings/ (226個の.safetensorsファイル)
 
 ### 主要コンポーネント
 
-- **search.py**: ベクトル検索のUIとフィルタリング機能
+- **search.py**: 軽量検索フロントエンド（表示のみ特化）
+- **search_engine.py**: フィルタリング・重複除去の中核（twilog_server.pyで統合使用）
 - **data_csv.py**: CSVベースデータアクセス層
 - **twilog_client.py**: WebSocket通信クライアント
 - **safe_input.py**: 安全な入力処理（日本語対応）
-- **twilog_server.py**: WebSocketベースの検索サーバー
+- **twilog_server.py**: 統合WebSocketサーバー（ベクトル検索 + SearchEngine + MCP互換メソッド）
 - **mcp_wrap.py**: MCPプロトコル対話的クライアント

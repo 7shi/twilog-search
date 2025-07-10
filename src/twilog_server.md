@@ -66,3 +66,13 @@
 **Problem**: vector_searchとvector_search_rpcの二重実装により、コードの重複と保守性の低下が発生していた。また、大容量検索結果の分割送信処理がメソッド内に分散していた。
 
 **Solution**: vector_searchメソッドを単一のasyncメソッドに統合し、Streaming Extensions対応のチャンク分割ロジックを実装。メソッドがリストを返すことで、embed_server.pyのhandle_clientが自動的に分割送信を実行する責務分離を実現。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式で返却され、メモリ効率と通信効率の両立を達成。
+
+### SearchEngine統合による機能一元化
+**Problem**: twilog_server.pyはベクトル検索のみを提供し、フィルタリング機能はクライアント側（search.py）とMCPサーバー側で重複実装されていた。この二重実装により、機能追加時の修正箇所が分散し、保守性が低下していた。また、MCPサーバーではSQLiteベースの古い実装が残存し、CSVベースの新アーキテクチャとの不整合が発生していた。
+
+**Solution**: SearchEngineクラスをtwilog_server.pyにインポートし、フィルタリング機能を統合。meta.jsonからCSVパスを自動取得する機能を追加し、SearchEngineインスタンスの初期化を自動化。MCP互換のメソッド群（search_similar, get_user_stats, get_database_stats, search_posts_by_text）を実装し、フィルタリング済みの結果を返却。これにより、検索ロジックをサーバー側に一元化し、クライアント（search.py）とMCPサーバーは単純なWebSocketラッパーとして機能する統合アーキテクチャを実現した。
+
+### MCPプロトコル互換API の実装
+**Problem**: MCPサーバーで独自実装されていたメソッド群（search_similar、get_user_stats等）がtwilog_server.pyに存在せず、MCPサーバー側で複雑な処理を重複実装する必要があった。また、メソッド名の不整合により、API設計の一貫性が損なわれていた。
+
+**Solution**: MCPサーバーで提供されていたメソッド名と同一のAPIをtwilog_server.pyに実装。search_similar（ベクトル検索+フィルタリング）、get_user_stats（ユーザー統計）、get_database_stats（データベース統計）、search_posts_by_text（テキスト検索）を追加し、SearchEngineとの連携により実装。これにより、MCPサーバーは単純なWebSocketラッパーとなり、処理ロジックの重複を解消。統一されたAPI設計により、CLI・MCP両方で同じメソッド名と処理結果を提供する一貫性を確保した。

@@ -39,19 +39,24 @@
 - 分割JSONL保存による効率的な管理
 - 1件ずつ追記保存による処理安全性
 
-### WebSocketベースのアーキテクチャ分離
-**Problem**: ベクトル検索機能をアプリケーションに統合すると、重いライブラリ（torch、SentenceTransformers）の読み込みにより、開発時の頻繁な再起動で生産性が低下する。
+### WebSocketベースのアーキテクチャ分離と統合
+**Problem**: ベクトル検索機能をアプリケーションに統合すると、重いライブラリ（torch、SentenceTransformers）の読み込みにより、開発時の頻繁な再起動で生産性が低下する。また、MCPサーバー（TypeScript）とSearchEngine（Python）でフィルタリング機能が二重実装され、保守性とコードの一貫性に問題があった。
 
-**Solution**: サーバー・クライアント分離アーキテクチャを採用。
-- **twilog_server.py**: ベクトル検索サーバー（デーモン）
+**Solution**: SearchEngine中心の統合アーキテクチャを採用。
+- **twilog_server.py**: 統合検索サーバー（デーモン）
   - Ruri v3モデル初期化とembeddingsデータ読み込み
-  - ベクトル化とコサイン類似度検索
-  - WebSocket通信と分割送信機能
-- **search.py**: 軽量・WebSocketクライアント
-  - data_csv.pyによるCSVベースメタデータアクセス
-  - UI処理と結果表示
-  - 数秒での高速起動
-- 各コンポーネントが独立して最適化可能
+  - SearchEngineインスタンスによるフィルタリング統合
+  - MCP互換メソッド（search_similar, get_user_stats等）提供
+  - meta.jsonからCSVパス自動取得
+- **search.py**: 軽量フロントエンド
+  - twilog_server.pyのsearch_similarメソッド使用
+  - UI処理と結果表示のみに特化
+  - SearchEngineのインポートを削除、数秒での高速起動
+- **MCPサーバー**: 単純なWebSocketラッパー
+  - twilog_server.pyの各メソッドを直接転送
+  - SQLiteベース実装（database.ts, filters.ts）を完全削除
+  - フィルタリング処理の重複削除、コード簡素化
+- 機能の一元化による保守性向上と開発効率改善
 
 ### ハイブリッド検索システムの必要性
 **Problem**: 単純なベクトル検索では、直接的な類似度のみで判断するため、関連性の高い投稿を見逃す可能性がある。例えば「バージョン管理」で検索した際に、内容は異なるが「git」タグを持つ関連投稿が検索対象外になる。
@@ -87,45 +92,53 @@ twilog/
 ├── embeddings/               # ベクトル検索用（分割ファイル）
 │   ├── 0000.safetensors     # 投稿ベクトル（1000件ずつ）
 │   ├── 0001.safetensors     # ...
-│   ├── meta.json            # メタデータ
+│   ├── meta.json            # メタデータ（CSVパス含む）
 │   └── ...
 ├── tags/                     # タグ情報（分割ファイル、オプション）
 │   ├── 0000.jsonl           # タグデータ（1000件ずつ）
 │   └── ...
 ├── embed_server.py           # 基底クラス（BaseEmbedServer）
-├── twilog_server.py          # Twilog専用WebSocketサーバー（デーモン）
+├── twilog_server.py          # 統合WebSocketサーバー（SearchEngine統合）
 ├── twilog_client.py          # テスト用クライアント
-├── search.py                 # 軽量検索クライアント（完了）
+├── search.py                 # 軽量検索クライアント（フロントエンド化）
+├── search_engine.py          # フィルタリング機能の中核
 ├── data_csv.py               # CSVベースデータアクセス層
-└── extract_tags.py           # CSVベースタグ付けスクリプト（完了）
+├── extract_tags.py           # CSVベースタグ付けスクリプト（完了）
+└── mcp/src/index.ts          # MCPラッパー（SQLite実装削除済み）
 ```
 
 ## 実装状況
 
-### 完了済み: CSVベース検索システム
+### 完了済み: 統合アーキテクチャシステム
 - **embed_server.py**: 基底クラス（BaseEmbedServer）
   - 共通のデーモン管理とWebSocket通信
   - 拡張可能なリクエスト処理システム
   - エラーハンドリングと進捗報告
   - サーバー種別の動的識別機能
-- **twilog_server.py**: Twilog専用WebSocketサーバー（デーモン）
+- **twilog_server.py**: 統合WebSocketサーバー（デーモン）
   - Ruri v3モデルによるベクトル検索
-  - 埋め込みデータの一括読み込み
+  - SearchEngineインスタンス統合によるフィルタリング
+  - MCP互換メソッド（search_similar, get_user_stats等）
+  - meta.jsonからCSVパス自動取得
   - 分割送信による大量結果の効率的転送
-  - メタデータ駆動による確実性向上
-- **twilog_client.py**: テスト用クライアント
-  - WebSocket通信のテストとデバッグ
-  - エクスポート可能なクライアントクラス
-- **search.py**: 軽量検索クライアント
-  - WebSocket通信によるリモート検索
-  - data_csv.pyによるCSVベースメタデータアクセス
-  - 対話的インターフェース、ユーザーフィルタリング
+- **search_engine.py**: フィルタリング機能の中核
+  - ユーザーフィルタリング、日付フィルタリング
+  - 重複除去とランキング処理
+  - CSV直接アクセスによるデータ取得
+- **search.py**: 軽量検索クライアント（フロントエンド化）
+  - twilog_server.pyのsearch_similarメソッド使用
+  - UI処理と結果表示のみに特化
   - 数秒での高速起動（軽量化）
+- **mcp/src/index.ts**: MCPラッパー
+  - twilog_server.pyの各メソッドを直接転送
+  - SQLiteベース実装削除によるシンプル化
+  - database.ts/filters.ts削除済み
 - **extract_tags.py**: CSVベースタグ付けスクリプト
   - data_csv.pyによるCSVファイル直接読み込み
   - strip_content関数による前処理統合
   - SQLiteデータベース構築不要
 - **性能**: 22万件に対して数ミリ秒での高速検索
+- **保守性**: SearchEngine中心の一元化による重複削除
 - **開発効率**: CSVベースによる単純化とセットアップ時間短縮
 
 ### 将来実装予定: ハイブリッド検索システム
@@ -161,4 +174,4 @@ twilog/
 - **利点**: 柔軟で意味的な関連性発見が可能
 - **課題**: LLM呼び出しレイテンシ、生成タグ品質の不確実性
 
-この設計により、高精度な意味的検索と網羅的な関連投稿発見を22万件規模で実現予定。WebSocketベースの分離アーキテクチャにより、タグ検索機能の追加時もサーバー側の変更を最小限に抑制可能。
+この設計により、高精度な意味的検索と網羅的な関連投稿発見を22万件規模で実現予定。SearchEngine中心の統合アーキテクチャにより、タグ検索機能の追加時もSearchEngineでの実装のみでCLI・MCP両方に反映可能。

@@ -1,20 +1,19 @@
 # Twilog MCP Server
 
-Twilog検索システム用のMCP（Model Context Protocol）サーバーです。Twilog ServerへのWebSocket接続とSQLiteデータベース操作を統合したツールセットを提供します。
+Twilog検索システム用のMCP（Model Context Protocol）サーバーです。twilog_server.pyへの軽量WebSocketラッパーとして動作し、統一されたAPIを提供します。
 
 ## 機能
 
 ### 主要ツール
 
 1. **search_similar** - ベクトル検索
-   - Twilog Serverを通じた意味的検索
-   - ユーザーフィルタリング（includes/excludes/threshold）
-   - 日付フィルタリング（from/to）
+   - twilog_server.pyを通じた意味的検索
+   - SearchEngineによるフィルタリング（サーバー側処理）
    - 重複除去機能
 
 2. **get_status** - サーバー状態確認
-   - Twilog Serverの稼働状況確認
-   - 初期化完了状態の確認
+   - twilog_server.pyの稼働状況確認
+   - SearchEngine初期化完了状態の確認
 
 3. **get_user_stats** - ユーザー統計
    - ユーザー別投稿数ランキング
@@ -25,18 +24,22 @@ Twilog検索システム用のMCP（Model Context Protocol）サーバーです�
 5. **search_posts_by_text** - テキスト検索
    - LIKE検索による文字列マッチング
 
+6. **embed_text** - ベクトル化
+   - テキストのベクトル化（デバッグ用）
+
 ## セットアップ
 
 ### 前提条件
 
-1. **Twilog Server** が稼働中であること
+1. **twilog_server.py** が稼働中であること
    ```bash
-   uv run get_server.py start
+   uv run src/twilog_server.py start
    ```
 
-2. **データベースファイル** が存在すること
-   - デフォルト: `twilog.db`
-   - カスタムパスも指定可能（`--db`オプション使用）
+2. **CSVファイルとembeddingsディレクトリ** が存在すること
+   - twilog.csv（元データ）
+   - embeddings/ ディレクトリ（ベクトルデータ + meta.json）
+   - CSVパスはmeta.jsonから自動取得
 
 ### インストール
 
@@ -60,11 +63,8 @@ npm run dev
 # 本番実行
 npm start
 
-# カスタムデータベースファイルを指定
-npm start -- --db /path/to/custom.db
-
-# WebSocket URLも指定
-npm start -- --db mydata.db --websocket ws://localhost:9999
+# WebSocket URLを指定
+npm start -- --websocket ws://localhost:8765
 ```
 
 ### コマンドライン引数
@@ -73,13 +73,11 @@ npm start -- --db mydata.db --websocket ws://localhost:9999
 node dist/index.js [オプション]
 
 オプション:
-  --db, --database PATH       デフォルトのデータベースファイルパス (デフォルト: twilog.db)
   --websocket, --ws URL       WebSocket URL (デフォルト: ws://localhost:8765)
   --help, -h                  ヘルプを表示
 
 例:
-  node dist/index.js --db /path/to/custom.db
-  node dist/index.js --db=mydata.db --websocket=ws://localhost:8765
+  node dist/index.js --websocket=ws://localhost:8765
 ```
 
 ## 使用例
@@ -96,24 +94,19 @@ node dist/index.js [オプション]
 }
 ```
 
-### フィルタリング付き検索
+### 件数制限付き検索
 
 ```typescript
 {
   "name": "search_similar",
   "arguments": {
     "query": "プログラミング",
-    "top_k": 20,
-    "user_filter": {
-      "threshold_min": 10
-    },
-    "date_filter": {
-      "from": "2023-01-01 00:00:00",
-      "to": "2023-12-31 23:59:59"
-    }
+    "top_k": 20
   }
 }
 ```
+
+**注意**: フィルタリング機能はtwilog_server.py側のSearchEngineで処理されます。MCPサーバーは単純なWebSocketラッパーのため、フィルタリングパラメータの直接指定はできません。
 
 ### ユーザー統計取得
 
@@ -133,22 +126,25 @@ node dist/index.js [オプション]
 ```
 twilog-mcp-server/
 ├── src/
-│   ├── index.ts      # メインサーバー
-│   ├── database.ts   # データベース操作
-│   └── filters.ts    # フィルタリング機能
+│   ├── index.ts      # メインサーバー（WebSocketラッパー）
+│   └── index.md      # 実装ドキュメント
 ├── package.json
 ├── tsconfig.json
 └── README.md
 ```
 
+**削除されたファイル**:
+- `database.ts` - SQLiteアクセス層（不要）
+- `filters.ts` - 独自フィルタリング（SearchEngineに統合）
+
 ### データフロー
 
 1. MCP クライアント → MCP Server
-2. MCP Server → Twilog Server (WebSocket)
-3. MCP Server → SQLite データベース
-4. フィルタリング処理
-5. 結果の統合・整形
-6. MCP クライアントへ返却
+2. MCP Server → twilog_server.py (WebSocket/JSON-RPC 2.0)
+3. twilog_server.py → SearchEngine → CSV データ
+4. フィルタリング・検索処理（サーバー側）
+5. 結果の整形・返却
+6. MCP クライアントへ表示
 
 ## 設定
 
@@ -169,14 +165,14 @@ twilog-mcp-server/
 }
 ```
 
-カスタムデータベースやWebSocketサーバーを使用する場合：
+カスタムWebSocketサーバーを使用する場合：
 
 ```json
 {
   "mcpServers": {
     "twilog": {
       "command": "node",
-      "args": ["dist/index.js", "--db", "/path/to/custom.db", "--websocket", "ws://localhost:9999"],
+      "args": ["dist/index.js", "--websocket", "ws://localhost:9999"],
       "cwd": "/path/to/twilog-mcp-server",
       "env": {}
     }
@@ -186,24 +182,7 @@ twilog-mcp-server/
 
 ### Gemini CLI での設定例
 
-`.gemini/settings.json` に以下の設定を追加：
-
-```json
-{
-  "mcpServers": {
-    "twilog": {
-      "type": "stdio",
-      "command": "node",
-      "args": [
-        "/path/to/twilog-mcp-server/dist/index.js",
-        "--db",
-        "/path/to/twilog.db"
-      ],
-      "env": {}
-    }
-  }
-}
-```
+`.gemini/settings.json` に `.mcp.json` と同様の内容を記述。
 
 ### WebSocket URL
 
@@ -211,82 +190,75 @@ twilog-mcp-server/
 
 各ツールで `websocket_url` パラメータによる上書きが可能です。
 
-### データベースパス
+### データ設定
 
-**サーバー起動時にデフォルト指定:**
+**CSVファイルとembeddingsディレクトリ:**
+- CSVパスは`embeddings/meta.json`から自動取得
+- twilog_server.py起動時に設定が確定
+- MCPサーバーでは設定変更不可（ラッパーのため）
+
+**WebSocket URL:**
 ```bash
-# デフォルト (twilog.db)
+# デフォルト (ws://localhost:8765)
 npm start
 
-# カスタムデータベース
-npm start -- --db /path/to/mydata.db
-node dist/index.js --database custom.db
+# カスタムURL
+npm start -- --websocket ws://localhost:9999
 ```
 
-**注意:** ツール実行時の`db_path`パラメータは削除されました。データベース指定はサーバー起動時のみ可能です。
+## 処理の統合
 
-## フィルタリング機能
+### SearchEngine統合
 
-### ユーザーフィルタリング
+全ての検索・フィルタリング処理はtwilog_server.py側のSearchEngineで実行されます：
 
-- **includes**: 指定ユーザーのみを対象（排他的）
-- **excludes**: 指定ユーザーを除外（排他的）
-- **threshold_min**: 投稿数下限（組み合わせ可能）
-- **threshold_max**: 投稿数上限（組み合わせ可能）
+- **ユーザーフィルタリング**: SearchEngineの設定に従って処理
+- **日付フィルタリング**: SearchEngineの設定に従って処理  
+- **重複除去**: 同一ユーザー・同一内容の投稿で古い投稿を優先
+- **ランキング**: 類似度順でのソート
 
-### 日付フィルタリング
+### ラッパーとしての役割
 
-- **from**: 開始日時（YYYY-MM-DD HH:MM:SS形式）
-- **to**: 終了日時（YYYY-MM-DD HH:MM:SS形式）
-
-### 重複除去
-
-同一ユーザーの同一内容投稿について、より古い投稿を優先して表示します。
+MCPサーバーは以下の処理のみを担当：
+- JSON-RPC 2.0リクエストの転送
+- twilog_server.pyからの結果受信
+- MCP形式での結果フォーマット
 
 ## エラーハンドリング
 
-- WebSocket接続エラー
-- データベース接続エラー
+- WebSocket接続エラー（ECONNREFUSED、ETIMEDOUT）
+- JSON-RPC 2.0プロトコルエラー
+- twilog_server.py応答エラー
 - 不正なクエリパラメータ
-- サーバー応答エラー
 
-すべてのエラーは適切なエラーメッセージと共にMCPクライアントに返却されます。
+すべてのエラーは適切な日本語エラーメッセージと共にMCPクライアントに返却されます。
 
 ## テスト
+
+### 前提条件
+
+twilog_server.pyが稼働していることを確認してください：
+
+```bash
+uv run src/twilog_server.py start
+```
 
 ### テスト実行
 
 ```bash
-# 全テスト実行（ユニット + 統合テスト）
+# 基本テスト（WebSocket通信確認）
 npm test
 
-# ユニットテストのみ（高速、サーバー起動不要）
-npm run test:unit
-
-# 統合テストのみ（MCPサーバー経由）
-npm run test:integration
-
-# 監視モード（ファイル変更時に自動実行）
-npm run test:watch
-```
-
-### テスト構成
-
-- **ユニットテスト**: 個別モジュールの単体テスト（TwilogFiltersなど）
-- **統合テスト**: MCPサーバー全体のエンドツーエンドテスト
-- **共有サーバー方式**: 統合テスト全体で1つのサーバーを共有（46%高速化）
-
-### テストオプション
-
-```bash
-# カスタムデータベースでテスト
-npm test -- --db=/path/to/test.db
-
-# WebSocketサーバーを指定してテスト
+# カスタムWebSocketサーバーでテスト
 npm test -- --websocket=ws://localhost:9999
 ```
 
-詳細な情報は [tests/README.md](tests/README.md) を参照してください。
+### テスト内容
+
+- WebSocket接続テスト
+- JSON-RPC 2.0通信テスト  
+- 各ツール（search_similar、get_status等）の動作確認
+- エラーハンドリング確認
 
 ## 開発
 
@@ -296,12 +268,10 @@ npm test -- --websocket=ws://localhost:9999
 npm run dev
 ```
 
-### ウォッチモード
+### アーキテクチャ
 
-```bash
-npm run watch
-```
+本MCPサーバーは **twilog_server.pyへの軽量ラッパー** として設計されています：
 
-## ライセンス
-
-MIT
+- **責務**: JSON-RPC 2.0通信とMCP形式への変換のみ
+- **処理**: 検索・フィルタリングは全てtwilog_server.py側で実行
+- **利点**: 機能追加時はtwilog_server.pyのみ修正すればCLI・MCP両方に反映

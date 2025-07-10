@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 import asyncio
 import json
+import os
 import sys
 import time
 import argparse
 from pathlib import Path
 from typing import Optional, Any, List, Tuple
 from embed_server import EmbedServer, check_server_status, stop_server, start_daemon
+from search_engine import SearchEngine
 
 
 class TwilogServer(EmbedServer):
@@ -20,6 +22,7 @@ class TwilogServer(EmbedServer):
         super().__init__(model_name)
         self.post_ids: List[int] = []
         self.vectors: Optional[Any] = None
+        self.search_engine: Optional[SearchEngine] = None
     
     def _load_embeddings(self) -> Tuple[List[int], Any]:
         """分割された埋め込みファイルを読み込む"""
@@ -56,6 +59,22 @@ class TwilogServer(EmbedServer):
         else:
             return [], torch.tensor([])
 
+    def _load_csv_path(self) -> str:
+        """meta.jsonからCSVパスを取得し、絶対パスに変換"""
+        csv_relative_path = self.metadata.get("csv_path")
+        if not csv_relative_path:
+            raise ValueError("meta.jsonにcsv_pathが見つかりません")
+        
+        # embeddings_dirの親ディレクトリからの相対パスを絶対パスに変換
+        embeddings_parent = self.embeddings_dir.parent
+        csv_absolute_path = embeddings_parent / csv_relative_path
+        return str(csv_absolute_path.resolve())
+    
+    def _init_search_engine(self):
+        """SearchEngineインスタンスの初期化"""
+        csv_path = self._load_csv_path()
+        self.search_engine = SearchEngine(csv_path)
+    
     async def _init_model(self):
         """モデル初期化とembeddings読み込み"""
         await super()._init_model()  # 親クラスの初期化を呼び出す
@@ -67,8 +86,15 @@ class TwilogServer(EmbedServer):
             self.post_ids, self.vectors = self._load_embeddings()
             embeddings_time = time.monotonic() - start_time
             await self.report_progress(f"embeddings読み込み完了: {len(self.post_ids)}件 ({embeddings_time:.2f}秒)")
+            
+            # SearchEngine初期化
+            await self.report_progress("SearchEngine初期化開始...")
+            search_start_time = time.monotonic()
+            self._init_search_engine()
+            search_time = time.monotonic() - search_start_time
+            await self.report_progress(f"SearchEngine初期化完了 ({search_time:.2f}秒)")
         except Exception as e:
-            await self.report_progress(f"embeddings読み込み失敗: {e}")
+            await self.report_progress(f"初期化失敗: {e}")
             raise  # 例外を再発生させて上位で処理される
     
     async def vector_search(self, params: dict = None):
@@ -135,10 +161,117 @@ class TwilogServer(EmbedServer):
         
         return chunks
     
+    async def search_similar(self, params: dict = None):
+        """類似検索を実行（フィルタリング付き）"""
+        if not self.init_completed:
+            raise RuntimeError("モデルがまだ初期化されていません")
+        
+        if not self.search_engine:
+            raise RuntimeError("SearchEngineが初期化されていません")
+        
+        query = params.get("query") if params else None
+        if not query:
+            raise ValueError("Invalid params: query is required")
+        
+        # ベクトル検索を実行
+        vector_search_results = await self.vector_search(params)
+        
+        # チャンク形式の結果を統合
+        all_results = []
+        for chunk in vector_search_results:
+            all_results.extend(chunk.get("data", []))
+        
+        # SearchEngineでフィルタリング
+        filtered_results = []
+        top_k = params.get("top_k", 10) if params else 10
+        
+        for result in self.search_engine.search(all_results):
+            filtered_results.append(result)
+            if len(filtered_results) >= top_k:
+                break
+        
+        return filtered_results
+    
+    async def get_user_stats(self, params: dict = None):
+        """ユーザー統計を取得"""
+        if not self.search_engine:
+            raise RuntimeError("SearchEngineが初期化されていません")
+        
+        limit = params.get("limit", 50) if params else 50
+        
+        # SearchEngineからユーザー統計を取得
+        user_stats = []
+        for user, count in self.search_engine.user_post_counts.items():
+            user_stats.append({"user": user, "post_count": count})
+        
+        # 投稿数順でソート
+        user_stats.sort(key=lambda x: x["post_count"], reverse=True)
+        
+        return user_stats[:limit]
+    
+    async def get_database_stats(self, params: dict = None):
+        """データベース統計を取得"""
+        if not self.search_engine:
+            raise RuntimeError("SearchEngineが初期化されていません")
+        
+        # SearchEngineからデータ統計を取得
+        total_posts = len(self.search_engine.data_access.posts_data)
+        total_users = len(self.search_engine.user_post_counts)
+        
+        # 日付範囲を取得（簡易実装）
+        timestamps = []
+        for post_data in self.search_engine.data_access.posts_data.values():
+            if post_data.get("timestamp"):
+                timestamps.append(post_data["timestamp"])
+        
+        timestamps.sort()
+        earliest = timestamps[0] if timestamps else ""
+        latest = timestamps[-1] if timestamps else ""
+        
+        return {
+            "total_posts": total_posts,
+            "total_users": total_users,
+            "date_range": {
+                "earliest": earliest,
+                "latest": latest
+            }
+        }
+    
+    async def search_posts_by_text(self, params: dict = None):
+        """テキスト検索を実行"""
+        if not self.search_engine:
+            raise RuntimeError("SearchEngineが初期化されていません")
+        
+        search_term = params.get("search_term") if params else None
+        if not search_term:
+            raise ValueError("Invalid params: search_term is required")
+        
+        limit = params.get("limit", 50) if params else 50
+        
+        # SearchEngineのデータから検索
+        results = []
+        for post_id, post_data in self.search_engine.data_access.posts_data.items():
+            content = post_data.get("content", "")
+            if search_term.lower() in content.lower():
+                user = self.search_engine.post_user_map.get(post_id, "")
+                results.append({
+                    "post_id": post_id,
+                    "content": content,
+                    "timestamp": post_data.get("timestamp", ""),
+                    "url": post_data.get("url", ""),
+                    "user": user
+                })
+        
+        # 新しい順でソート
+        results.sort(key=lambda x: x["timestamp"], reverse=True)
+        
+        return results[:limit]
+    
     async def get_status(self, params: dict = None):
         """ステータスを取得"""
         response = await super().get_status(params)
         response["embeddings_loaded"] = len(self.post_ids) if self.post_ids else 0
+        response["search_engine_ready"] = self.search_engine is not None
         return response
 
 

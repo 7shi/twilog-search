@@ -2,10 +2,10 @@
 
 ## なぜこの実装が存在するか
 
-### EmbedClientからの継承による機能拡張の必要性
-**Problem**: Twilog検索サーバーは基本的な埋め込み機能に加えて、検索結果の分割送信処理という独自機能を持つため、基本クライアントでは対応できない専用リクエストが存在していた。
+### EmbedClientからの継承による統合検索機能の提供
+**Problem**: TwilogServerがSearchEngine統合により多様な検索・統計機能（search_similar、get_user_stats、get_database_stats、search_posts_by_text）を提供するようになったため、基本的な埋め込み機能のみを扱う基底クライアントでは不十分になった。
 
-**Solution**: EmbedClientを継承したTwilogClientを実装し、基本機能（get_status、check_init、embed_text、stop_server）を再利用しながら、Twilog固有の`vector_search`機能を追加。継承により重複実装を避けつつ機能拡張を実現。
+**Solution**: EmbedClientを継承したTwilogClientを実装し、基本機能を再利用しながらTwilogServer固有の全メソッドを追加。統合アーキテクチャによる豊富な機能セットをクライアント側でも完全サポート。
 
 ### WebSocketURL形式による柔軟な接続先指定
 **Problem**: 基底クラスのhost/port分離形式では、WebSocketのスキーム（ws://、wss://）やパス指定が困難で、多様な接続先に対する柔軟性が不足していた。
@@ -37,10 +37,20 @@
 
 **Solution**: EmbedCommandを継承したTwilogCommandを実装し、基底クラスのargparseパーサーを拡張してvector_search機能を追加。継承により基本コマンドを自動的に利用可能にしながら、Twilog固有機能を段階的に拡張。
 
-### 動的メソッド呼び出しによる拡張コマンドの自動統合
-**Problem**: 基底クラスのEmbedCommandが提供する動的メソッド呼び出し機能を活用し、新しく追加したvector_searchコマンドを既存の処理フローに自然に統合する必要があった。
+### TwilogServer統合メソッドの完全対応
+**Problem**: TwilogServerがSearchEngine統合により提供する新機能（search_similar、get_user_stats、get_database_stats、search_posts_by_text）に対応するクライアント側実装が不足していた。
 
-**Solution**: TwilogCommandクラスに`vector_search`メソッドを追加するだけで、基底クラスの`execute`メソッドが自動的に`getattr`により該当メソッドを呼び出す仕組みを活用。追加実装を最小限に抑えながら新機能を統合。
+**Solution**: 各TwilogServerメソッドに対応するクライアントメソッドを実装し、パラメータ処理とレスポンス解析を適切に処理。フィルタリング付き検索、統計取得、テキスト検索の全機能をクライアントから直接利用可能に。
+
+### CLI拡張による統合機能のコマンドライン提供
+**Problem**: TwilogServerの新機能群をコマンドライン経由で利用する手段が不足しており、開発・テスト・運用での利便性が低下していた。
+
+**Solution**: TwilogCommandクラスでargparseパーサーを拡張し、全TwilogServerメソッドに対応するコマンドを追加。各コマンドで適切な結果フォーマットと表示制限を実装し、実用的なCLIインターフェースを提供。
+
+### 動的メソッド呼び出しによる拡張コマンドの自動統合
+**Problem**: 基底クラスのEmbedCommandが提供する動的メソッド呼び出し機能を活用し、新しく追加した複数コマンド（search_similar、get_user_stats等）を既存の処理フローに自然に統合する必要があった。
+
+**Solution**: TwilogCommandクラスに各メソッドを追加するだけで、基底クラスの`execute`メソッドが自動的に`getattr`により該当メソッドを呼び出す仕組みを活用。統合アーキテクチャの全機能を最小限の追加実装で統合。
 
 ### Streaming Extensions対応による大容量データ受信処理
 **Problem**: サーバー側のStreaming Extensions実装により、検索結果が`{"data": [...], "chunk": 1, "more": true}`形式で分割送信されるため、クライアント側も対応した受信処理が必要になった。
