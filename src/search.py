@@ -18,7 +18,7 @@ from safe_input import safe_text_input
 class TwilogVectorSearch:
     """Twilogベクトル検索クラス"""
     
-    def __init__(self, db_path: str, websocket_url: str = "ws://localhost:8765"):
+    def __init__(self, csv_path: str, websocket_url: str):
         """
         初期化
         
@@ -26,11 +26,11 @@ class TwilogVectorSearch:
             db_path: データベースファイルのパス
             websocket_url: RuriサーバーのWebSocket URL
         """
-        self.db_path = db_path
+        self.db_path = csv_path
         self.websocket_url = websocket_url
         
         # データアクセス層の初期化
-        self.data_access = TwilogDataAccess(db_path)
+        self.data_access = TwilogDataAccess(csv_path)
         
         # ユーザーフィルタリング設定
         self.user_filter_settings = UserFilterSettings({})
@@ -134,7 +134,7 @@ class TwilogVectorSearch:
             # 重複チェック
             if key in seen_combinations:
                 # 既存の投稿と同じユーザー・内容の場合、日付が古い方を優先
-                existing_post_id, existing_similarity, existing_timestamp, existing_url = seen_combinations[key]
+                _, _, existing_timestamp, _ = seen_combinations[key]
                 if timestamp < existing_timestamp:
                     # 現在の投稿の方が古い場合、既存を置き換え
                     seen_combinations[key] = (post_id, similarity, timestamp, url)
@@ -157,13 +157,15 @@ class TwilogVectorSearch:
 def main():
     """メイン関数"""
     parser = argparse.ArgumentParser(description="Twilogリモート検索システム")
-    parser.add_argument("csv_file", nargs="?", default="twilog.csv", help="CSVファイルのパス（デフォルト: twilog.csv）")
-    
+    parser.add_argument("csv_file", nargs="?", default="twilog.csv",
+                        help="CSVファイルのパス（デフォルト: twilog.csv）")
+    parser.add_argument("-s", "--server-url", default="ws://localhost:8765",
+                        help="TwilogサーバーのWebSocket URL（デフォルト: ws://localhost:8765）")
     args = parser.parse_args()
     
     # 検索システムの初期化
-    search_system = TwilogVectorSearch(args.csv_file)
-    
+    search_system = TwilogVectorSearch(args.csv_file, args.server_url)
+
     print(f"リモート検索システム準備完了")
     print("検索クエリを入力してください")
     print("特殊コマンド: /help でヘルプ表示")
