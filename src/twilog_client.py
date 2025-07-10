@@ -25,7 +25,7 @@ class TwilogClient(EmbedClient):
         port = parsed_url.port or 8765
         super().__init__(host=host, port=port)
     
-    async def search_similar(self, query_text: str, top_k: Optional[int] = None) -> List[Tuple[int, float]]:
+    async def vector_search(self, query_text: str, top_k: Optional[int] = None) -> List[Tuple[int, float]]:
         """
         検索を実行
         
@@ -42,7 +42,7 @@ class TwilogClient(EmbedClient):
         params = {"query": query_text}
         if top_k is not None:
             params["top_k"] = top_k
-        results = await self._send_request("search_similar", params)
+        results = await self._send_request("vector_search", params)
         
         # 分割送信されたデータを結合
         data = []
@@ -77,16 +77,16 @@ class TwilogCommand(EmbedCommand):
                 break
         
         if subparsers:
-            # search_similar command (Twilog固有)
-            search_parser = subparsers.add_parser('search_similar', help='類似検索を実行')
+            # vector_search command (Twilog固有)
+            search_parser = subparsers.add_parser('vector_search', help='類似検索を実行')
             search_parser.add_argument('query', help='検索クエリ')
             search_parser.add_argument('-k', '--top-k', type=int, help='取得件数制限')
         
         return parser
     
-    async def search_similar(self, args) -> None:
-        """search_similarコマンドの処理"""
-        results = await self.client.search_similar(args.query, args.top_k)
+    async def vector_search(self, args) -> None:
+        """vector_searchコマンドの処理"""
+        results = await self.client.vector_search(args.query, args.top_k)
         data = results.get("data", [])
         print(f"検索結果: {len(data)}件")
         for i, (post_id, similarity) in enumerate(data[:10], 1):

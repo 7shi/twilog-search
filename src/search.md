@@ -190,7 +190,7 @@
 ### TwilogClientによる通信統一化
 **Problem**: search.pyで直接WebSocket通信を実装していたため、通信処理が重複し、保守性が低下していた。また、WebSocketプロトコルの詳細がsearch.pyに混在し、責任の分離ができていなかった。さらに、サーバータイプの確認処理が不十分で、誤ったサーバーに接続する可能性があった。
 
-**Solution**: twilog_client.pyのTwilogClientクラスを活用し、WebSocket通信を統一化。_test_websocket_connection()ではclient.get_status()を使用してサーバータイプが'TwilogServer'であることを確認し、適切なサーバーへの接続を保証。_search_remote()ではclient.search_similar()メソッドを使用し、通信の詳細をクライアントクラスに委譲。これにより、search.pyはフィルタリングとUI処理に集中でき、WebSocket通信の複雑さを分離した。
+**Solution**: twilog_client.pyのTwilogClientクラスを活用し、WebSocket通信を統一化。_test_websocket_connection()ではclient.get_status()を使用してサーバータイプが'TwilogServer'であることを確認し、適切なサーバーへの接続を保証。_search_remote()ではclient.vector_search()メソッドを使用し、通信の詳細をクライアントクラスに委譲。これにより、search.pyはフィルタリングとUI処理に集中でき、WebSocket通信の複雑さを分離した。
 
 ### データベースアクセス層の分離
 **Problem**: search.pyが700行を超える巨大なファイルとなり、データベースアクセス機能（_load_user_data()、_get_post_content()）とUI・フィルタリング機能が混在していた。これにより、コードの理解と保守が困難になり、データベースアクセス機能の再利用も困難だった。

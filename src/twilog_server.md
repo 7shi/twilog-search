@@ -50,19 +50,19 @@
 ### JSON-RPC 2.0プロトコルの完全準拠
 **Problem**: 独自JSON形式による通信により、標準的なRPCクライアントとの互換性がなく、MCPサーバーとの連携で再ラッピング処理が必要になっていた。
 
-**Solution**: JSON-RPC 2.0標準に完全準拠したリクエスト・レスポンス形式を採用。リクエストは`{"jsonrpc": "2.0", "id": 1, "method": "search_similar", "params": {...}}`、レスポンスは`{"jsonrpc": "2.0", "id": 1, "result": {...}}`形式とし、標準エラーコード（-32600, -32601, -32602, -32603）を使用。
+**Solution**: JSON-RPC 2.0標準に完全準拠したリクエスト・レスポンス形式を採用。リクエストは`{"jsonrpc": "2.0", "id": 1, "method": "vector_search", "params": {...}}`、レスポンスは`{"jsonrpc": "2.0", "id": 1, "result": {...}}`形式とし、標準エラーコード（-32600, -32601, -32602, -32603）を使用。
 
 ### メソッド名の2語化による機能の明確化
 **Problem**: `search`という単語メソッド名では検索機能の具体的な種類（類似検索、テキスト検索等）が不明確で、将来的な機能拡張時に命名の衝突が懸念された。
 
-**Solution**: メソッド名を`search_similar`に変更し、類似検索機能であることを明確化。基底クラスのメソッド名統一化（`get_status`、`stop_server`、`embed_text`）とも合わせて、API全体で2語形式による一貫性を確保。
+**Solution**: メソッド名を`vector_search`に変更し、類似検索機能であることを明確化。基底クラスのメソッド名統一化（`get_status`、`stop_server`、`embed_text`）とも合わせて、API全体で2語形式による一貫性を確保。
 
 ### 旧形式サポートの完全削除
 **Problem**: 後方互換性のために旧形式と新形式の両方をサポートすると、コードが複雑化し、保守性が低下する。
 
 **Solution**: 旧形式のサポートを完全に削除し、JSON-RPC 2.0のみに統一。これにより、コードの簡潔性と保守性を向上させ、標準プロトコルへの完全移行を実現。
 
-### search_similarメソッドの統合とStreaming Extensions対応
-**Problem**: search_similarとsearch_similar_rpcの二重実装により、コードの重複と保守性の低下が発生していた。また、大容量検索結果の分割送信処理がメソッド内に分散していた。
+### vector_searchメソッドの統合とStreaming Extensions対応
+**Problem**: vector_searchとvector_search_rpcの二重実装により、コードの重複と保守性の低下が発生していた。また、大容量検索結果の分割送信処理がメソッド内に分散していた。
 
-**Solution**: search_similarメソッドを単一のasyncメソッドに統合し、Streaming Extensions対応のチャンク分割ロジックを実装。メソッドがリストを返すことで、embed_server.pyのhandle_clientが自動的に分割送信を実行する責務分離を実現。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式で返却され、メモリ効率と通信効率の両立を達成。
+**Solution**: vector_searchメソッドを単一のasyncメソッドに統合し、Streaming Extensions対応のチャンク分割ロジックを実装。メソッドがリストを返すことで、embed_server.pyのhandle_clientが自動的に分割送信を実行する責務分離を実現。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式で返却され、メモリ効率と通信効率の両立を達成。

@@ -103,7 +103,7 @@ class TwilogVectorSearch:
             (rank, similarity, post_info)のタプル
         """
         # リモート検索を実行
-        search_results = asyncio.run(self.client.search_similar(query, None))
+        search_results = asyncio.run(self.client.vector_search(query, None))
         
         if not search_results:
             return

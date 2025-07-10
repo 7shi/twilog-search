@@ -71,7 +71,7 @@ class TwilogServer(EmbedServer):
             await self.report_progress(f"embeddings読み込み失敗: {e}")
             raise  # 例外を再発生させて上位で処理される
     
-    async def search_similar(self, params: dict = None):
+    async def vector_search(self, params: dict = None):
         """類似検索を実行（Streaming Extensions対応）"""
         if not self.init_completed:
             raise RuntimeError("モデルがまだ初期化されていません")
