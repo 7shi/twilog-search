@@ -1,0 +1,40 @@
+{
+  "name": "twilog-mcp-server",
+  "version": "1.0.0",
+  "description": "Twilog検索システム用MCPサーバー - Twilog Serverへの接続とデータベース操作を提供",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc",
+    "dev": "tsx src/index.ts",
+    "dev:with-db": "tsx src/index.ts --db",
+    "start": "node dist/index.js",
+    "start:with-db": "node dist/index.js --db",
+    "watch": "tsx watch src/index.ts",
+    "test": "npm run build && node --test tests/all.test.js",
+    "test:watch": "npm run build && node --test --watch tests/all.test.js",
+    "test:unit": "npm run build && node --test tests/unit.test.js",
+    "test:integration": "npm run build && node --test tests/basic.test.js tests/debug.test.js tests/date-filter.test.js"
+  },
+  "keywords": [
+    "mcp",
+    "twilog",
+    "search",
+    "websocket",
+    "sqlite"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "sqlite3": "^5.1.7",
+    "ws": "^8.18.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/sqlite3": "^3.1.11",
+    "@types/ws": "^8.5.12",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0"
+  }
+}
