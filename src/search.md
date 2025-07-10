@@ -202,7 +202,7 @@
 
 **Solution**: data_csv.pyによるCSVベースのデータアクセスに移行。twilog.csvを直接メモリに読み込み、extract_users.pyのURL解析ロジックを統合することで、外部ファイル依存を完全に排除した。data_sqlite.pyと完全に同じインターフェースを提供し、ドロップイン置換を実現。これにより、データベース構築プロセスが不要になり、CSVファイルのみでの即座検索が可能になった。デフォルトファイル名をtwilog.csvに変更し、CSVベースアーキテクチャを標準とした。
 
-### 設定UI機能の分離
+### 設定とUI機能の分離
 **Problem**: search.pyが設定UI機能（ユーザーフィルタリング、日付フィルタリング、表示件数設定）とメイン検索機能を同一ファイルに実装していたため、コードが複雑になり保守性が低下していた。また、設定ロジックが散在し、設定の一貫性確保が困難だった。
 
-**Solution**: 設定UI機能をui_settings.pyモジュールに分離し、設定ごとに専用のクラス（UserFilterSettings、DateFilterSettings、TopKSettings）を作成。設定状態と操作を一元管理する設計を採用し、search.pyは検索機能に専念できるようにした。これにより、コードの責任が明確化され、設定機能の再利用性と保守性が向上した。
+**Solution**: 設定データをsettings.py、UI機能をsettings_ui.pyに分離し、設定ごとに専用のクラス（UserFilterSettings、DateFilterSettings、TopKSettings）を作成。設定状態と操作を一元管理する設計を採用し、search.pyは検索機能に専念できるようにした。さらに、1行ラッパー関数（_is_user_allowed、_is_date_allowed、設定メニュー関数）をインライン展開して廃止し、コードの複雑性を削減した。これにより、設定とUI機能の責任が明確化され、再利用性と保守性が向上した。

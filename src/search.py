@@ -3,21 +3,16 @@
 Twilogデータベースに対するベクトル検索システム
 """
 import argparse
-import json
 import asyncio
-import websockets
-from datetime import datetime
-from pathlib import Path
-from typing import List, Tuple, Generator, Optional
-from llm7shi import bold
+from typing import Tuple, Generator
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
-from simple_term_menu import TerminalMenu
-from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_no_menu
-from ui_settings import UserFilterSettings, DateFilterSettings, TopKSettings
+from settings import UserFilterSettings, DateFilterSettings, TopKSettings
+from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k_menu
 from twilog_client import TwilogClient
 from data_csv import TwilogDataAccess
+from safe_input import safe_text_input
 
 
 class TwilogVectorSearch:
@@ -66,7 +61,6 @@ class TwilogVectorSearch:
             print("WebSocketサーバーが利用できません。twilog_server.py start でデーモンを起動してください。")
             raise RuntimeError("WebSocketサーバーが必要です")
     
-    
     async def _test_websocket_connection(self):
         """WebSocketサーバーへの接続テスト"""
         try:
@@ -82,64 +76,6 @@ class TwilogVectorSearch:
         server_type = result.get('server_type', '')
         if server_type != 'TwilogServer':
             raise RuntimeError(f"期待されるサーバータイプ 'TwilogServer' ではありません: {server_type}")
-    
-    def _search_remote(self, query: str) -> list:
-        """リモートで検索を実行する"""
-        try:
-            return asyncio.run(self.client.search_similar(query, None))
-        except Exception as e:
-            raise RuntimeError(f"リモート検索に失敗: {e}")
-    
-    def _is_user_allowed(self, user: str) -> bool:
-        """ユーザーがフィルタリング条件を満たすかチェック"""
-        return self.user_filter_settings.is_user_allowed(user)
-    
-    def _parse_date(self, date_str: str) -> Optional[str]:
-        """日付文字列をパースしてタイムスタンプ形式に変換"""
-        if not date_str.strip():
-            return None
-            
-        date_str = date_str.strip()
-        
-        try:
-            # YYYYMMDD形式の場合
-            if len(date_str) == 8 and date_str.isdigit():
-                year = int(date_str[:4])
-                month = int(date_str[4:6])
-                day = int(date_str[6:8])
-                dt = datetime(year, month, day)
-                return dt.strftime('%Y-%m-%d 00:00:00')
-            
-            # Y-M-D形式の場合
-            elif '-' in date_str:
-                parts = date_str.split('-')
-                if len(parts) == 3:
-                    year, month, day = map(int, parts)
-                    dt = datetime(year, month, day)
-                    return dt.strftime('%Y-%m-%d 00:00:00')
-            
-            return None
-        except (ValueError, TypeError):
-            return None
-    
-    def _is_date_allowed(self, timestamp: str) -> bool:
-        """投稿日時がフィルタリング条件を満たすかチェック"""
-        return self.date_filter_settings.is_date_allowed(timestamp)
-    
-    
-    def _user_filter_menu(self):
-        """ユーザーフィルタリングメニュー"""
-        self.user_filter_settings.show_menu()
-    
-    
-    def _top_k_menu(self):
-        """表示件数設定メニュー"""
-        self.top_k_settings.show_menu()
-    
-    def _date_filter_menu(self):
-        """日付フィルタリングメニュー"""
-        self.date_filter_settings.show_menu()
-    
     
     def _show_help(self):
         """ヘルプメッセージを表示"""
@@ -167,7 +103,7 @@ class TwilogVectorSearch:
             (rank, similarity, post_info)のタプル
         """
         # リモート検索を実行
-        search_results = self._search_remote(query)
+        search_results = asyncio.run(self.client.search_similar(query, None))
         
         if not search_results:
             return
@@ -180,7 +116,7 @@ class TwilogVectorSearch:
             user = self.post_user_map.get(post_id, '')
             
             # ユーザーフィルタリング条件をチェック
-            if not self._is_user_allowed(user):
+            if not self.user_filter_settings.is_user_allowed(user):
                 continue
             
             # 投稿内容を個別取得
@@ -190,7 +126,7 @@ class TwilogVectorSearch:
             url = post_info.get('url', '')
             
             # 日付フィルタリング条件をチェック
-            if not self._is_date_allowed(timestamp):
+            if not self.date_filter_settings.is_date_allowed(timestamp):
                 continue
             
             key = (user, content)
@@ -252,13 +188,13 @@ def main():
                 search_system._show_help()
                 continue
             elif command == "user":
-                search_system._user_filter_menu()
+                show_user_filter_menu(search_system.user_filter_settings)
                 continue
             elif command == "date":
-                search_system._date_filter_menu()
+                show_date_filter_menu(search_system.date_filter_settings)
                 continue
             elif command == "top":
-                search_system._top_k_menu()
+                show_top_k_menu(search_system.top_k_settings)
                 continue
             elif command in ["exit", "quit", "q"]:
                 print("プログラムを終了します")
@@ -272,7 +208,7 @@ def main():
         results = []
         for result in search_system.search(query):
             results.append(result)
-            if len(results) >= search_system.top_k_settings.top_k:
+            if len(results) >= search_system.top_k_settings.get_top_k():
                 break
         
         if not results:
@@ -281,7 +217,7 @@ def main():
         
         # 結果表示
         console = Console()
-        rank_width = len(str(search_system.top_k_settings.top_k))
+        rank_width = len(str(search_system.top_k_settings.get_top_k()))
         
         for rank, similarity, post_info in results:
             user = post_info['user'] or 'unknown'
