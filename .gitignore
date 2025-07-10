@@ -1,0 +1,20 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Virtual environments
+.venv
+
+# Data files
+*.csv
+*.tsv
+*.db
+embeddings
+tags
+
+# Binary and model files
+*.safetensors
