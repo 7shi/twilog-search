@@ -40,10 +40,12 @@ def show_user_filter_menu(settings: UserFilterSettings):
             return  # noneは即座に抜ける
             
         elif choice_index == 1:  # includes
-            _handle_includes(settings)
+            if _handle_includes(settings):
+                return  # includes設定完了時は即座に抜ける
             
         elif choice_index == 2:  # excludes
-            _handle_excludes(settings)
+            if _handle_excludes(settings):
+                return  # excludes設定完了時は即座に抜ける
             
         elif choice_index == 3:  # threshold min
             _handle_threshold_min(settings)
@@ -61,14 +63,14 @@ def _handle_includes(settings: UserFilterSettings):
     
     if users_input is None:
         # Ctrl+Dの場合、何も変更せずにメニューに戻る
-        return
+        return False
     elif users_input.strip():
         users = [user.strip() for user in users_input.split(',') if user.strip()]
         # includes設定時は他の設定をすべてクリア
         settings.set_includes(users)
         console = Console()
         console.print(f"[green]includes設定: {len(users)}人のユーザーを対象[/green]")
-        return  # includesは即座に抜ける
+        return True  # includes設定完了
     else:
         # 無入力の場合、値を消去するか確認
         if settings.has_includes():
@@ -83,7 +85,7 @@ def _handle_includes(settings: UserFilterSettings):
                 console.print(f"[green]includes設定を消去しました[/green]")
                 console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
         # 回答に関わらずメニューに戻る
-        return
+        return False
 
 
 def _handle_excludes(settings: UserFilterSettings):
@@ -95,14 +97,14 @@ def _handle_excludes(settings: UserFilterSettings):
     
     if users_input is None:
         # Ctrl+Dの場合、何も変更せずにメニューに戻る
-        return
+        return False
     elif users_input.strip():
         users = [user.strip() for user in users_input.split(',') if user.strip()]
         # excludes設定時は他の設定をすべてクリア
         settings.set_excludes(users)
         console = Console()
         console.print(f"[green]excludes設定: {len(users)}人のユーザーを除外[/green]")
-        return  # excludesは即座に抜ける
+        return True  # excludes設定完了
     else:
         # 無入力の場合、値を消去するか確認
         if settings.has_excludes():
@@ -117,7 +119,7 @@ def _handle_excludes(settings: UserFilterSettings):
                 console.print(f"[green]excludes設定を消去しました[/green]")
                 console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
         # 回答に関わらずメニューに戻る
-        return
+        return False
 
 
 def _handle_threshold_min(settings: UserFilterSettings):
