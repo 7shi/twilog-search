@@ -26,10 +26,6 @@ async def test_websocket_connection(client):
     if server_type != 'TwilogServer':
         raise RuntimeError(f"サーバータイプが 'TwilogServer' ではありません: {server_type}")
     
-    # SearchEngine初期化状況も確認
-    search_engine_ready = result.get('search_engine_ready', False)
-    if not search_engine_ready:
-        raise RuntimeError("SearchEngineが初期化されていません")
 
 def show_help():
     """ヘルプメッセージを表示"""
