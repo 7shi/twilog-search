@@ -5,8 +5,6 @@ import assert from 'node:assert';
 import { initializeSharedServer, cleanupSharedServer, getSharedClient, parseTestArgs } from './base-client.js';
 import { runWebSocketDirectTests } from './websocket-direct.test.js';
 
-// ユニットテストをインポート
-import './unit.test.js';
 
 const { dbPath, websocketUrl } = parseTestArgs();
 

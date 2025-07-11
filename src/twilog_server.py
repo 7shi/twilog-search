@@ -69,7 +69,10 @@ class TwilogServer(EmbedServer):
         query_vector = self._embed_text(query)
         
         # SearchEngineにベクトル検索を委譲
-        return self.search_engine.vector_search(query_vector, params)
+        chunks = self.search_engine.vector_search(query_vector, params)
+        
+        # Streaming Extensions形式でラップ
+        return {"streaming": chunks}
     
     async def search_similar(self, params: dict = None):
         """類似検索を実行（フィルタリング付き）"""
@@ -94,7 +97,18 @@ class TwilogServer(EmbedServer):
         query_vector = self._embed_text(query)
         
         # SearchEngineに類似検索を委譲
-        return self.search_engine.search_similar(query_vector, search_settings)
+        results = self.search_engine.search_similar(query_vector, search_settings)
+        
+        # タプルのリストを構造化されたデータに変換
+        structured_results = []
+        for rank, similarity, post_info in results:
+            structured_results.append({
+                'rank': rank,
+                'score': similarity,
+                'post': post_info
+            })
+        
+        return structured_results
     
     async def get_user_stats(self, params: dict = None):
         """ユーザー統計を取得"""

@@ -96,10 +96,11 @@ class BaseEmbedServer():
                     if method_handler and callable(method_handler):
                         result = await method_handler(params)
                         
-                        # resultがlistの場合は分割送信（Streaming Extensions）
-                        if isinstance(result, list):
-                            last = len(result) - 1
-                            for i, chunk_data in enumerate(result):
+                        # Streaming Extensions対応（dictかつstreamingフィールドのみを含む場合のみ）
+                        if isinstance(result, dict) and len(result) == 1 and "streaming" in result:
+                            chunks = result["streaming"]
+                            last = len(chunks) - 1
+                            for i, chunk_data in enumerate(chunks):
                                 response = {
                                     "jsonrpc": "2.0",
                                     "id": request_id,

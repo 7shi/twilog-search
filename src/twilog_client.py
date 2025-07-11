@@ -75,7 +75,7 @@ class TwilogClient(EmbedClient):
             search_settings: 検索設定（top_k含む）
             
         Returns:
-            (rank, similarity, post_info)のタプルのリスト
+            構造化された検索結果のリスト
             
         Raises:
             RuntimeError: サーバーエラーまたは通信エラー
@@ -194,7 +194,10 @@ class TwilogCommand(EmbedCommand):
             search_settings = SearchSettings(args.top_k)
         results = await self.client.search_similar(args.query, search_settings)
         print(f"類似検索結果: {len(results)}件")
-        for rank, similarity, post_info in results[:10]:
+        for result in results[:10]:
+            rank = result.get('rank', 0)
+            similarity = result.get('score', 0.0)
+            post_info = result.get('post', {})
             user = post_info.get('user', 'unknown')
             content = post_info.get('content', '')[:100]  # 最初の100文字のみ表示
             timestamp = post_info.get('timestamp', '')

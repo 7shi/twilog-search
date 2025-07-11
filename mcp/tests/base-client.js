@@ -66,6 +66,12 @@ export class MCPTestClient {
     try {
       const result = await this.client.callTool({ name, arguments: args });
       console.log(`ツール ${name} 結果:`, JSON.stringify(result, null, 2));
+      
+      // MCPエラーフラグをチェック
+      if (result.isError) {
+        throw new Error(`ツール ${name} でエラーが発生: ${result.content[0]?.text || 'unknown error'}`);
+      }
+      
       return result;
     } catch (error) {
       console.error(`ツール ${name} エラー:`, error);

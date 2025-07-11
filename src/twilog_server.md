@@ -91,3 +91,8 @@
 **Problem**: TwilogServerがSearchEngineの機能を内包する設計により、ベクトル化とembed_server機能の責務が不明確になっていた。また、SearchEngineの遅延インポートとコンストラクタでの即座初期化により、アーキテクチャが複雑化していた。
 
 **Solution**: TwilogServerを完全なSearchEngineラッパーに再設計し、コンストラクタでSearchEngineインスタンスを生成、`_init_model()`でSearchEngineの遅延初期化を実行する明確な分離を実現。TwilogServerはクエリのベクトル化のみを担当し、全ての検索処理はSearchEngineに委譲する設計とした。SearchEngineに遅延初期化パターンを導入することで、グローバルインポートが可能になり、インスタンス生成と初期化のタイミングを分離。これにより、embed_server基底クラスの段階的初期化と調和し、責務が明確で保守性の高いアーキテクチャを確立した。
+
+### vector_searchメソッドのStreaming Extensions統合
+**Problem**: SearchEngineの`vector_search`メソッドが返すチャンク配列をそのまま返すと、embed_serverの新しいStreaming Extensions判定条件（`streamingフィールドのみを含む辞書`）に適合せず、分割送信処理が実行されない問題があった。
+
+**Solution**: `vector_search`メソッドでSearchEngineから取得したチャンク配列を`{"streaming": chunks}`形式でラッピングして返すように修正。これにより、embed_serverのStreaming Extensions処理（`isinstance(result, dict) and len(result) == 1 and "streaming" in result`）が正しく判定され、大容量検索結果の分割送信が適切に動作。責務分離を保ちながら、新しいStreaming Extensions仕様に完全準拠した。

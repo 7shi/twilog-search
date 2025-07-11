@@ -86,9 +86,9 @@
 **Solution**: `getattr(self, method)`による動的メソッド呼び出しを採用し、JSON-RPCメソッド名と同名のasyncメソッドを自動的に呼び出す設計に変更。新しいメソッドの追加時は対応するasyncメソッドを実装するだけで済み、handle_clientの修正が不要になった。各メソッドは独立したasyncメソッド（`get_status`、`check_init`、`stop_server`、`embed_text`）として実装され、責務分離と可読性が向上。
 
 ### Streaming Extensions対応による大容量データ送信
-**Problem**: 検索結果など大容量のデータを一度に送信すると、メモリ使用量が増大し、ネットワーク負荷やレスポンス遅延が問題となる。また、JSON-RPC標準では1リクエスト=1レスポンスが原則のため、大容量データの分割送信に適した仕組みが必要だった。
+**Problem**: 検索結果など大容量のデータを一度に送信すると、メモリ使用量が増大し、ネットワーク負荷やレスポンス遅延が問題となる。また、JSON-RPC標準では1リクエスト=1レスポンスが原則のため、大容量データの分割送信に適した仕組みが必要だった。さらに、すべてのリスト返却値を無条件でStreaming Extensions処理すると、通常の構造化データまで平坦化されてしまう問題があった。
 
-**Solution**: Streaming Extensionsパターンを採用し、メソッドがリストを返した場合にhandle_clientで自動的に分割送信を実行。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式でJSON-RPCレスポンスとしてラッピングされ、最終チャンクで`"more": false`となる。メソッド側はチャンク分割ロジックを実装し、handle_client側は単純にJSONRPCでラッピングするだけの責務分離を実現。
+**Solution**: Streaming Extensionsパターンを採用し、メソッドが`{"streaming": [...]}`形式の辞書を返した場合のみhandle_clientで自動的に分割送信を実行する選択的処理を実装。判定条件は`isinstance(result, dict) and len(result) == 1 and "streaming" in result`とし、streamingフィールドのみを含む辞書の場合のみStreaming Extensions処理を行う。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式でJSON-RPCレスポンスとしてラッピングされ、最終チャンクで`"more": false`となる。メソッド側はチャンク分割ロジックを実装し、handle_client側は単純にJSONRPCでラッピングするだけの責務分離を実現。
 
 ### serve_forever()による効率的なサーバー運用
 **Problem**: 従来の1秒ごとのポーリングによるサーバー運用（`while self.running: await asyncio.sleep(1)`）は、不要なCPU使用量と非効率的な停止処理を引き起こしていた。

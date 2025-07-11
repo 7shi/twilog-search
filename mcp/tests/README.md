@@ -21,11 +21,11 @@ npm run test:integration
 
 ### 個別ファイル実行（デバッグ用）
 ```bash
-node --test tests/unit.test.js
 node --test tests/basic.test.js
 node --test tests/debug.test.js
 node --test tests/date-filter.test.js
 node --test tests/websocket-direct.test.js
+node --test tests/debug-websocket.test.js
 ```
 
 ### オプション付き実行
@@ -48,13 +48,7 @@ npm test -- --db=/path/to/test.db --websocket=ws://localhost:9999
 - **役割**: 全テストを統合した高速テストスイート
 - **特徴**: 共有サーバー方式で1回の初期化のみ
 - **実行時間**: 約19秒（従来の46%短縮）
-- **テスト内容**: ユニットテスト + 統合テスト（基本機能、date_filter、デバッグ）
-
-#### `unit.test.js`
-- **役割**: ユニットテスト（個別モジュールのテスト）
-- **特徴**: サーバー起動不要、高速実行
-- **実行時間**: 約1秒未満
-- **テスト内容**: TwilogFiltersクラスの日付フィルター機能
+- **テスト内容**: WebSocket直接通信テスト + 統合テスト（基本機能、date_filter、デバッグ）
 
 ### サポートファイル
 
@@ -102,6 +96,14 @@ npm test -- --db=/path/to/test.db --websocket=ws://localhost:9999
   - 大規模検索（1000件）
   - 全件取得（分割送信プロトコル検証）
 
+#### `debug-websocket.test.js`
+- **役割**: WebSocketレスポンス構造のデバッグテスト
+- **用途**: サーバーからの実際のレスポンス形式を詳細に検証
+- **テスト内容**:
+  - WebSocketレスポンスの詳細ログ出力
+  - データ構造の分析と検証
+  - Streaming Extensions形式の確認
+
 ## テストの特徴
 
 ### パフォーマンス最適化
@@ -112,10 +114,11 @@ npm test -- --db=/path/to/test.db --websocket=ws://localhost:9999
 
 ### テスト分類
 
-1. **ユニットテスト**: 個別モジュールの単体テスト（サーバー起動不要）
-2. **統合テスト**: MCPサーバー全体のエンドツーエンドテスト
-3. **共有サーバー方式**: 統合テスト全体で1つのサーバーを共有
-4. **自動ビルド**: テスト実行前に自動的にTypeScriptをコンパイル
+1. **統合テスト**: MCPサーバー全体のエンドツーエンドテスト
+2. **WebSocket直接通信テスト**: MCPを経由しない通信性能テスト
+3. **デバッグテスト**: レスポンス構造の詳細検証
+4. **共有サーバー方式**: 統合テスト全体で1つのサーバーを共有
+5. **自動ビルド**: テスト実行前に自動的にTypeScriptをコンパイル
 
 ### アーキテクチャ
 

@@ -223,6 +223,7 @@ class TwilogMCPServer {
         }
       } catch (error) {
         return {
+          isError: true,
           content: [
             {
               type: 'text',
@@ -450,12 +451,17 @@ class TwilogMCPServer {
       }
       
       const resultText = results
-        .map((result: any) => 
-          `${result[0]}位: ${result[1].toFixed(5)} - @${result[2]?.user || 'unknown'}
-${result[2]?.content || ''}
-[${result[2]?.timestamp || ''}] ${result[2]?.url || ''}
----`
-        )
+        .map((result: any) => {
+          // 新しい構造化データを処理
+          const rank = result.rank || 0;
+          const score = typeof result.score === 'number' ? result.score.toFixed(5) : 'N/A';
+          const postData = result.post || {};
+          
+          return `${rank}位: ${score} - @${postData.user || 'unknown'}
+${postData.content || ''}
+[${postData.timestamp || ''}] ${postData.url || ''}
+---`;
+        })
         .join('\n');
 
       return {

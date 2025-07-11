@@ -94,6 +94,23 @@ class WebSocketDirectTest {
                   });
                   return;
                 }
+              } else if (Array.isArray(result)) {
+                // embed_server.pyの分割送信形式（各要素を個別メッセージとして送信）
+                isStreamingMode = true;
+                chunkCount++;
+                allResults.push(result);
+                
+                // moreフィールドで継続判定
+                if (response.more === false || response.more === undefined) {
+                  const elapsed = Date.now() - startTime;
+                  resolve({ 
+                    success: true, 
+                    data: allResults, 
+                    elapsed, 
+                    chunks: chunkCount 
+                  });
+                  return;
+                }
               } else if (!isStreamingMode) {
                 // 単一レスポンス
                 const elapsed = Date.now() - startTime;
