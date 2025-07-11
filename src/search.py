@@ -74,6 +74,20 @@ def main():
     # 対話的な検索ループ
     while True:
         print()
+        
+        # 現在の制限を表示
+        restrictions = []
+        user_status = search_settings.user_filter.format_status()
+        date_status = search_settings.date_filter.format_status()
+        
+        if user_status != "すべてのユーザー":
+            restrictions.append(f"ユーザー: {user_status}")
+        if date_status != "すべての日付":
+            restrictions.append(f"日付: {date_status}")
+        
+        if restrictions:
+            print(f"[制限] {' | '.join(restrictions)}")
+        
         try:
             query = safe_text_input("> ", "main", handle_eof=False)
             if not query:
