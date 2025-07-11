@@ -59,7 +59,7 @@ class WebSocketDirectTest {
       let isStreamingMode = false;
       let chunkCount = 0;
       
-      ws.on('message', (data) => {
+      const messageHandler = (data) => {
         try {
           const response = JSON.parse(data.toString());
           
@@ -76,42 +76,16 @@ class WebSocketDirectTest {
             
             const result = response.result;
             
-            // Streaming Extensions形式の処理
-            if (result && typeof result === 'object') {
-              if ('data' in result && Array.isArray(result.data)) {
-                isStreamingMode = true;
-                chunkCount++;
-                allResults.push(...result.data);
-                
-                // moreフィールドはresponseのトップレベルに存在（embed_server.py仕様）
-                if (response.more === false || response.more === undefined) {
-                  const elapsed = Date.now() - startTime;
-                  resolve({ 
-                    success: true, 
-                    data: allResults, 
-                    elapsed, 
-                    chunks: chunkCount 
-                  });
-                  return;
-                }
-              } else if (Array.isArray(result)) {
-                // embed_server.pyの分割送信形式（各要素を個別メッセージとして送信）
-                isStreamingMode = true;
-                chunkCount++;
-                allResults.push(result);
-                
-                // moreフィールドで継続判定
-                if (response.more === false || response.more === undefined) {
-                  const elapsed = Date.now() - startTime;
-                  resolve({ 
-                    success: true, 
-                    data: allResults, 
-                    elapsed, 
-                    chunks: chunkCount 
-                  });
-                  return;
-                }
-              } else if (!isStreamingMode) {
+            // embed_client.pyと同じ判定ロジック
+            const more = response.more;
+            if (more === undefined) {
+              // moreフィールドがない場合は単一レスポンス
+              if (allResults.length > 0) {
+                // 既にストリーミングデータがある場合はエラー
+                const elapsed = Date.now() - startTime;
+                resolve({ error: "サーバーからのレスポンスに'more'フィールドがありません", elapsed });
+                return;
+              } else {
                 // 単一レスポンス
                 const elapsed = Date.now() - startTime;
                 resolve({ 
@@ -121,15 +95,31 @@ class WebSocketDirectTest {
                 });
                 return;
               }
-            } else if (!isStreamingMode) {
-              // プリミティブ型レスポンス
-              const elapsed = Date.now() - startTime;
-              resolve({ 
-                success: true, 
-                data: result, 
-                elapsed 
-              });
-              return;
+            } else {
+              // Streaming Extensions形式
+              isStreamingMode = true;
+              chunkCount++;
+              
+              // resultの形式に応じて処理
+              if (result && typeof result === 'object' && 'data' in result && Array.isArray(result.data)) {
+                allResults.push(...result.data);
+              } else if (Array.isArray(result)) {
+                allResults.push(...result);
+              } else {
+                allResults.push(result);
+              }
+              
+              // 最後のチャンクかチェック
+              if (more === false) {
+                const elapsed = Date.now() - startTime;
+                resolve({ 
+                  success: true, 
+                  data: allResults, 
+                  elapsed, 
+                  chunks: chunkCount 
+                });
+                return;
+              }
             }
           } else {
             const elapsed = Date.now() - startTime;
@@ -137,87 +127,145 @@ class WebSocketDirectTest {
           }
         } catch (error) {
           const elapsed = Date.now() - startTime;
+          ws.removeListener('message', messageHandler);
           resolve({ error: `レスポンス解析エラー: ${error.message}`, elapsed });
         }
-      });
+      };
+      
+      ws.on('message', messageHandler);
 
-      // タイムアウト設定（30秒）
-      setTimeout(() => {
+      // タイムアウト設定（10秒）
+      const timeoutId = setTimeout(() => {
         const elapsed = Date.now() - startTime;
-        resolve({ error: `タイムアウト（30秒）`, elapsed });
-      }, 30000);
+        ws.removeListener('message', messageHandler);
+        resolve({ error: `タイムアウト（10秒）`, elapsed });
+      }, 10000);
+      
+      // 正常終了時にタイムアウトをクリアしリスナーを削除
+      const originalResolve = resolve;
+      resolve = (result) => {
+        clearTimeout(timeoutId);
+        ws.removeListener('message', messageHandler);
+        originalResolve(result);
+      };
 
       ws.send(JSON.stringify(request));
     });
   }
 }
 
-// エクスポート用のテスト関数
-export async function runWebSocketDirectTests() {
-  let tester;
-  let ws;
+// 個別テスト関数群
+async function setupWebSocketConnection() {
+  const tester = new WebSocketDirectTest();
+  const ws = await tester.connectWebSocket();
+  return { tester, ws };
+}
 
+function cleanupConnection(ws) {
+  if (ws && ws.readyState === ws.OPEN) {
+    ws.close();
+  }
+}
+
+test('サーバー状態確認テスト', async () => {
+  const { tester, ws } = await setupWebSocketConnection();
+  
   try {
-    // WebSocket接続
-    tester = new WebSocketDirectTest();
-    ws = await tester.connectWebSocket();
-    
-    // サーバー状態確認テスト
+    console.log('サーバー状態確認テスト開始...');
     const statusResult = await tester.sendRequest(ws, 'get_status');
+    console.log(`結果: ${statusResult.success ? '成功' : '失敗'} (${statusResult.elapsed}ms)`);
+    console.log(`サーバー状態: ${statusResult.data?.status || 'unknown'}`);
+    
     assert.ok(statusResult.success, 'get_status が成功');
     assert.ok(statusResult.elapsed < 1000, `レスポンス時間が1秒未満: ${statusResult.elapsed}ms`);
     assert.ok(statusResult.data.status === 'running', 'サーバーが稼働中');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
 
-    // 小規模検索テスト (10件)
+test('小規模検索テスト (5件)', async () => {
+  const { tester, ws } = await setupWebSocketConnection();
+  
+  try {
+    console.log('小規模検索テスト (5件) 開始...');
     const smallResult = await tester.sendRequest(ws, 'search_similar', { 
       query: 'テスト', 
-      top_k: 10 
+      settings: { top_k: 5 }
     });
-    assert.ok(smallResult.success, 'search_similar(10件) が成功');
+    console.log(`結果: ${smallResult.success ? '成功' : '失敗'} (${smallResult.elapsed}ms)`);
+    console.log(`取得件数: ${smallResult.data?.length || 0}件`);
+    
+    assert.ok(smallResult.success, 'search_similar(5件) が成功');
     assert.ok(smallResult.elapsed < 5000, `レスポンス時間が5秒未満: ${smallResult.elapsed}ms`);
-    assert.strictEqual(smallResult.data.length, 10, '正確に10件取得');
+    assert.strictEqual(smallResult.data.length, 5, '正確に5件取得');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
 
-    // 中規模検索テスト (100件)
+test('中規模検索テスト (100件)', async () => {
+  const { tester, ws } = await setupWebSocketConnection();
+  
+  try {
+    console.log('中規模検索テスト (100件) 開始...');
     const mediumResult = await tester.sendRequest(ws, 'search_similar', { 
       query: 'テスト', 
-      top_k: 100 
+      settings: { top_k: 100 }
     });
+    console.log(`結果: ${mediumResult.success ? '成功' : '失敗'} (${mediumResult.elapsed}ms)`);
+    console.log(`取得件数: ${mediumResult.data?.length || 0}件`);
+    
     assert.ok(mediumResult.success, 'search_similar(100件) が成功');
     assert.ok(mediumResult.elapsed < 5000, `レスポンス時間が5秒未満: ${mediumResult.elapsed}ms`);
     assert.strictEqual(mediumResult.data.length, 100, '正確に100件取得');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
 
-    // 大規模検索テスト (1000件)
+test('大規模検索テスト (1000件)', async () => {
+  const { tester, ws } = await setupWebSocketConnection();
+  
+  try {
+    console.log('大規模検索テスト (1000件) 開始...');
     const largeResult = await tester.sendRequest(ws, 'search_similar', { 
       query: 'テスト', 
-      top_k: 1000 
+      settings: { top_k: 1000 }
     });
+    console.log(`結果: ${largeResult.success ? '成功' : '失敗'} (${largeResult.elapsed}ms)`);
+    console.log(`取得件数: ${largeResult.data?.length || 0}件`);
+    
     assert.ok(largeResult.success, 'search_similar(1000件) が成功');
     assert.ok(largeResult.elapsed < 5000, `レスポンス時間が5秒未満: ${largeResult.elapsed}ms`);
     assert.strictEqual(largeResult.data.length, 1000, '正確に1000件取得');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
 
-    // 分割送信テスト（適度なサイズ）
+test('分割送信テスト (50000件)', async () => {
+  const { tester, ws } = await setupWebSocketConnection();
+  
+  try {
+    console.log('分割送信テスト (50000件) 開始...');
     const chunkResult = await tester.sendRequest(ws, 'search_similar', { 
       query: 'テスト', 
-      top_k: 50000 // 全件ではなく適度なサイズで分割送信をテスト
+      settings: { top_k: 50000 }
     });
+    console.log(`結果: ${chunkResult.success ? '成功' : '失敗'} (${chunkResult.elapsed}ms)`);
+    console.log(`取得件数: ${chunkResult.data?.length || 0}件`);
+    
     assert.ok(chunkResult.success, 'search_similar(50000件) が成功');
     assert.ok(chunkResult.elapsed < 10000, `レスポンス時間が10秒未満: ${chunkResult.elapsed}ms`);
     assert.ok(chunkResult.data.length > 10000, `大量のデータ取得: ${chunkResult.data.length}件`);
-    
-    return {
-      success: true,
-      tests: ['status', 'small', 'medium', 'large', 'chunked'],
-      results: {
-        status: statusResult,
-        small: smallResult,
-        medium: mediumResult,
-        large: largeResult,
-        chunked: chunkResult
-      }
-    };
   } finally {
-    if (ws) {
-      ws.close();
-    }
+    cleanupConnection(ws);
   }
+});
+
+// エクスポート用のテスト関数（後方互換性のため残す）
+export async function runWebSocketDirectTests() {
+  // 個別テストが実行されるため、この関数は空にする
+  return { success: true, message: '個別テストを実行してください' };
 }

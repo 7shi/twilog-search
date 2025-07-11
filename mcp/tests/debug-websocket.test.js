@@ -67,19 +67,18 @@ class DebugWebSocketTest {
       let chunkCount = 0;
       let rawMessages = [];
       
-      ws.on('message', (data) => {
+      const messageHandler = (data) => {
         try {
           const rawMessage = data.toString();
           rawMessages.push(rawMessage);
           
           console.log(`\n--- メッセージ受信 ${rawMessages.length} ---`);
           console.log('Raw message length:', rawMessage.length);
-          console.log('Raw message (first 500 chars):', rawMessage.substring(0, 500));
+          console.log('Raw message (first 200 chars):', rawMessage.substring(0, 200));
           
           const response = JSON.parse(rawMessage);
           console.log('Parsed response keys:', Object.keys(response));
-          console.log('Response ID:', response.id);
-          console.log('Request ID:', requestId);
+          console.log('Response/Request ID:', response.id, '/', requestId);
           
           if (response.id !== requestId) {
             console.log('⚠️  異なるリクエストIDのレスポンス - スキップ');
@@ -107,81 +106,34 @@ class DebugWebSocketTest {
             console.log('Result type:', typeof result);
             console.log('Result is array:', Array.isArray(result));
             
-            if (result && typeof result === 'object') {
-              console.log('Result keys:', Object.keys(result));
-              
-              if ('data' in result && Array.isArray(result.data)) {
-                console.log('🔄 ストリーミングモード検出');
-                isStreamingMode = true;
-                chunkCount++;
-                console.log('Chunk', chunkCount, '- data length:', result.data.length);
-                console.log('First item in chunk:', result.data[0] ? JSON.stringify(result.data[0], null, 2) : 'null');
-                
-                allResults.push(...result.data);
-                console.log('累計結果数:', allResults.length);
-                
-                // moreフィールドの確認
-                console.log('response.more:', response.more);
-                console.log('result.more:', result.more);
-                
-                if (response.more === false || response.more === undefined) {
-                  console.log('✓ ストリーミング終了');
-                  const elapsed = Date.now() - startTime;
-                  resolve({ 
-                    success: true, 
-                    data: allResults, 
-                    elapsed, 
-                    chunks: chunkCount,
-                    rawMessages,
-                    debugInfo: {
-                      totalMessages: rawMessages.length,
-                      isStreamingMode,
-                      chunkCount,
-                      finalDataLength: allResults.length
-                    }
-                  });
-                  return;
-                }
-              } else if (Array.isArray(result)) {
-                // embed_server.pyの分割送信形式を検出
-                console.log('🔄 分割送信モード検出');
-                isStreamingMode = true;
-                chunkCount++;
-                console.log('Chunk', chunkCount, '- result type:', typeof result);
-                console.log('Result:', JSON.stringify(result, null, 2));
-                
-                // 各要素を個別のメッセージとして処理
-                allResults.push(result);
-                console.log('累計結果数:', allResults.length);
-                
-                // moreフィールドの確認
-                console.log('response.more:', response.more);
-                
-                if (response.more === false || response.more === undefined) {
-                  console.log('✓ 分割送信終了');
-                  const elapsed = Date.now() - startTime;
-                  resolve({ 
-                    success: true, 
-                    data: allResults, 
-                    elapsed, 
-                    chunks: chunkCount,
-                    rawMessages,
-                    debugInfo: {
-                      totalMessages: rawMessages.length,
-                      isStreamingMode,
-                      chunkCount,
-                      finalDataLength: allResults.length
-                    }
-                  });
-                  return;
-                }
-              } else if (!isStreamingMode) {
+            // embed_client.pyと同じ判定ロジック
+            const more = response.more;
+            if (more === undefined) {
+              // moreフィールドがない場合は単一レスポンス
+              if (allResults.length > 0) {
+                // 既にストリーミングデータがある場合はエラー
+                const elapsed = Date.now() - startTime;
+                resolve({ 
+                  error: "サーバーからのレスポンスに'more'フィールドがありません", 
+                  elapsed,
+                  rawMessages,
+                  debugInfo: {
+                    totalMessages: rawMessages.length,
+                    isStreamingMode,
+                    chunkCount
+                  }
+                });
+                return;
+              } else {
+                // 単一レスポンス
                 console.log('📦 単一レスポンスモード');
                 console.log('Result length:', Array.isArray(result) ? result.length : 'not array');
                 
-                if (Array.isArray(result)) {
+                if (Array.isArray(result) && result.length > 0) {
                   console.log('First item:', JSON.stringify(result[0], null, 2));
-                  console.log('Last item:', JSON.stringify(result[result.length - 1], null, 2));
+                  if (result.length > 1) {
+                    console.log(`... 他${result.length - 1}件省略`);
+                  }
                 }
                 
                 const elapsed = Date.now() - startTime;
@@ -199,23 +151,58 @@ class DebugWebSocketTest {
                 });
                 return;
               }
-            } else if (!isStreamingMode) {
-              console.log('🔤 プリミティブ型レスポンス');
-              console.log('Result value:', result);
+            } else {
+              // Streaming Extensions形式
+              console.log('🔄 ストリーミングモード検出');
+              isStreamingMode = true;
+              chunkCount++;
+              console.log('Chunk', chunkCount);
               
-              const elapsed = Date.now() - startTime;
-              resolve({ 
-                success: true, 
-                data: result, 
-                elapsed,
-                rawMessages,
-                debugInfo: {
-                  totalMessages: rawMessages.length,
-                  isStreamingMode,
-                  chunkCount
+              // resultの形式に応じて処理
+              if (result && typeof result === 'object' && 'data' in result && Array.isArray(result.data)) {
+                console.log('- data length:', result.data.length);
+                if (result.data.length > 0) {
+                  console.log('- first item:', JSON.stringify(result.data[0], null, 2));
+                  if (result.data.length > 1) {
+                    console.log(`- ... 他${result.data.length - 1}件省略`);
+                  }
                 }
-              });
-              return;
+                allResults.push(...result.data);
+              } else if (Array.isArray(result)) {
+                console.log('- result length:', result.length);
+                if (result.length > 0) {
+                  console.log('- first item:', JSON.stringify(result[0], null, 2));
+                  if (result.length > 1) {
+                    console.log(`- ... 他${result.length - 1}件省略`);
+                  }
+                }
+                allResults.push(...result);
+              } else {
+                console.log('- single item');
+                allResults.push(result);
+              }
+              
+              console.log('累計結果数:', allResults.length);
+              
+              // 最後のチャンクかチェック
+              if (more === false) {
+                console.log('✓ ストリーミング終了');
+                const elapsed = Date.now() - startTime;
+                resolve({ 
+                  success: true, 
+                  data: allResults, 
+                  elapsed, 
+                  chunks: chunkCount,
+                  rawMessages,
+                  debugInfo: {
+                    totalMessages: rawMessages.length,
+                    isStreamingMode,
+                    chunkCount,
+                    finalDataLength: allResults.length
+                  }
+                });
+                return;
+              }
             }
           } else {
             console.log('❌ 非JSON-RPC 2.0レスポンス');
@@ -235,6 +222,7 @@ class DebugWebSocketTest {
           console.log('❌ レスポンス解析エラー:', error.message);
           console.log('Raw message:', data.toString().substring(0, 1000));
           const elapsed = Date.now() - startTime;
+          ws.removeListener('message', messageHandler);
           resolve({ 
             error: `レスポンス解析エラー: ${error.message}`, 
             elapsed,
@@ -246,14 +234,16 @@ class DebugWebSocketTest {
             }
           });
         }
-      });
+      };
+      
+      ws.on('message', messageHandler);
 
-      // タイムアウト設定（30秒）
-      setTimeout(() => {
+      // タイムアウト設定（10秒）
+      const timeoutId = setTimeout(() => {
         console.log('⏰ タイムアウト発生');
         const elapsed = Date.now() - startTime;
         resolve({ 
-          error: `タイムアウト（30秒）`, 
+          error: `タイムアウト（10秒）`, 
           elapsed,
           rawMessages,
           debugInfo: {
@@ -263,7 +253,15 @@ class DebugWebSocketTest {
             finalDataLength: allResults.length
           }
         });
-      }, 30000);
+      }, 10000);
+      
+      // 正常終了時にタイムアウトをクリアしリスナーを削除
+      const originalResolve = resolve;
+      resolve = (result) => {
+        clearTimeout(timeoutId);
+        ws.removeListener('message', messageHandler);
+        originalResolve(result);
+      };
 
       console.log('📤 リクエスト送信中...');
       ws.send(JSON.stringify(request));
@@ -271,64 +269,97 @@ class DebugWebSocketTest {
   }
 }
 
-// デバッグテストの実行
-export async function runDebugWebSocketTests() {
-  console.log('🔍 WebSocket直接通信デバッグテスト開始');
-  
-  let tester;
-  let ws;
+// 個別デバッグテスト関数群
+async function setupDebugWebSocketConnection() {
+  const tester = new DebugWebSocketTest();
+  const ws = await tester.connectWebSocket();
+  return { tester, ws };
+}
 
+function cleanupConnection(ws) {
+  if (ws && ws.readyState === ws.OPEN) {
+    ws.close();
+  }
+}
+
+test('デバッグ: サーバー状態確認', async () => {
+  const { tester, ws } = await setupDebugWebSocketConnection();
+  
   try {
-    // WebSocket接続
-    tester = new DebugWebSocketTest();
-    ws = await tester.connectWebSocket();
-    
-    // サーバー状態確認
-    console.log('\n📊 サーバー状態確認テスト');
+    console.log('📊 サーバー状態確認テスト');
     const statusResult = await tester.sendDebugRequest(ws, 'get_status');
     console.log('Status result:', JSON.stringify(statusResult, null, 2));
     
-    if (!statusResult.success) {
-      console.log('❌ サーバー状態確認失敗 - テスト中止');
-      return { success: false, error: 'サーバー状態確認失敗' };
-    }
+    assert.ok(statusResult.success, 'サーバー状態確認が成功');
+    assert.ok(statusResult.data, 'ステータスデータが存在');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
 
-    // 問題の10件検索テスト
-    console.log('\n🎯 10件検索テスト（問題調査対象）');
-    const smallResult = await tester.sendDebugRequest(ws, 'search_similar', { 
+test('デバッグ: 5件検索テスト', async () => {
+  const { tester, ws } = await setupDebugWebSocketConnection();
+  
+  try {
+    console.log('🔍 5件検索テスト');
+    const result = await tester.sendDebugRequest(ws, 'search_similar', { 
       query: 'テスト', 
-      top_k: 10 
+      settings: { top_k: 5 }
     });
     
-    console.log('\n=== 10件検索結果分析 ===');
-    console.log('Success:', smallResult.success);
-    console.log('Error:', smallResult.error);
-    console.log('Elapsed:', smallResult.elapsed, 'ms');
-    console.log('Data type:', typeof smallResult.data);
-    console.log('Data is array:', Array.isArray(smallResult.data));
+    console.log('=== 5件検索結果分析 ===');
+    console.log('Success:', result.success);
+    console.log('Data length:', Array.isArray(result.data) ? result.data.length : 'not array');
+    console.log('Expected: 5');
+    console.log('Match:', Array.isArray(result.data) && result.data.length === 5);
     
-    if (Array.isArray(smallResult.data)) {
-      console.log('実際の件数:', smallResult.data.length);
+    assert.ok(result.success, '5件検索が成功');
+    assert.ok(Array.isArray(result.data), 'データが配列');
+    assert.strictEqual(result.data.length, 5, '正確に5件取得');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
+
+test('デバッグ: 10件検索テスト（settings形式）', async () => {
+  const { tester, ws } = await setupDebugWebSocketConnection();
+  
+  try {
+    console.log('🎯 10件検索テスト（settings形式）');
+    const result = await tester.sendDebugRequest(ws, 'search_similar', { 
+      query: 'テスト', 
+      settings: { top_k: 10 }
+    });
+    
+    console.log('=== 10件検索結果分析 ===');
+    console.log('Success:', result.success);
+    console.log('Error:', result.error);
+    console.log('Elapsed:', result.elapsed, 'ms');
+    console.log('Data type:', typeof result.data);
+    console.log('Data is array:', Array.isArray(result.data));
+    
+    if (Array.isArray(result.data)) {
+      console.log('実際の件数:', result.data.length);
       console.log('期待件数: 10');
-      console.log('件数一致:', smallResult.data.length === 10);
+      console.log('件数一致:', result.data.length === 10);
       
-      if (smallResult.data.length > 0) {
-        console.log('最初の項目:', JSON.stringify(smallResult.data[0], null, 2));
+      if (result.data.length > 0) {
+        console.log('最初の項目:', JSON.stringify(result.data[0], null, 2));
       }
-      if (smallResult.data.length > 1) {
-        console.log('最後の項目:', JSON.stringify(smallResult.data[smallResult.data.length - 1], null, 2));
+      if (result.data.length > 1) {
+        console.log('最後の項目:', JSON.stringify(result.data[result.data.length - 1], null, 2));
       }
     } else {
       console.log('❌ データが配列ではありません');
-      console.log('Data:', smallResult.data);
+      console.log('Data:', result.data);
     }
     
-    console.log('Debug info:', JSON.stringify(smallResult.debugInfo, null, 2));
-    console.log('Raw messages count:', smallResult.rawMessages ? smallResult.rawMessages.length : 0);
+    console.log('Debug info:', JSON.stringify(result.debugInfo, null, 2));
+    console.log('Raw messages count:', result.rawMessages ? result.rawMessages.length : 0);
     
-    if (smallResult.rawMessages && smallResult.rawMessages.length > 0) {
+    if (result.rawMessages && result.rawMessages.length > 0) {
       console.log('\n=== 生メッセージ分析 ===');
-      smallResult.rawMessages.forEach((msg, index) => {
+      result.rawMessages.forEach((msg, index) => {
         console.log(`Message ${index + 1}:`);
         console.log('  Length:', msg.length);
         console.log('  First 200 chars:', msg.substring(0, 200));
@@ -346,83 +377,42 @@ export async function runDebugWebSocketTests() {
         }
       });
     }
-
-    // 比較のため5件検索も実行
-    console.log('\n🔍 5件検索テスト（比較用）');
-    const verySmallResult = await tester.sendDebugRequest(ws, 'search_similar', { 
-      query: 'テスト', 
-      top_k: 5 
-    });
     
-    console.log('\n=== 5件検索結果分析 ===');
-    console.log('Success:', verySmallResult.success);
-    console.log('Data length:', Array.isArray(verySmallResult.data) ? verySmallResult.data.length : 'not array');
-    console.log('Expected: 5');
-    console.log('Match:', Array.isArray(verySmallResult.data) && verySmallResult.data.length === 5);
-
-    // 20件検索も実行
-    console.log('\n🔍 20件検索テスト（比較用）');
-    const smallerResult = await tester.sendDebugRequest(ws, 'search_similar', { 
-      query: 'テスト', 
-      top_k: 20 
-    });
-    
-    console.log('\n=== 20件検索結果分析 ===');
-    console.log('Success:', smallerResult.success);
-    console.log('Data length:', Array.isArray(smallerResult.data) ? smallerResult.data.length : 'not array');
-    console.log('Expected: 20');
-    console.log('Match:', Array.isArray(smallerResult.data) && smallerResult.data.length === 20);
-
-    return {
-      success: true,
-      tests: ['status', 'small_10', 'very_small_5', 'smaller_20'],
-      results: {
-        status: statusResult,
-        small_10: smallResult,
-        very_small_5: verySmallResult,
-        smaller_20: smallerResult
-      },
-      analysis: {
-        problem_identified: smallResult.success && Array.isArray(smallResult.data) && smallResult.data.length !== 10,
-        actual_count: Array.isArray(smallResult.data) ? smallResult.data.length : 'not array',
-        expected_count: 10,
-        streaming_mode: smallResult.debugInfo?.isStreamingMode,
-        chunk_count: smallResult.debugInfo?.chunkCount,
-        total_messages: smallResult.debugInfo?.totalMessages
-      }
-    };
-  } catch (error) {
-    console.log('❌ デバッグテスト実行エラー:', error.message);
-    console.log('Error stack:', error.stack);
-    return { success: false, error: error.message };
+    assert.ok(result.success, '10件検索が成功');
+    assert.ok(Array.isArray(result.data), 'データが配列');
+    assert.strictEqual(result.data.length, 10, '正確に10件取得');
   } finally {
-    if (ws) {
-      ws.close();
-      console.log('✓ WebSocket接続クローズ');
-    }
+    cleanupConnection(ws);
   }
+});
+
+test('デバッグ: 20件検索テスト', async () => {
+  const { tester, ws } = await setupDebugWebSocketConnection();
+  
+  try {
+    console.log('🔍 20件検索テスト');
+    const result = await tester.sendDebugRequest(ws, 'search_similar', { 
+      query: 'テスト', 
+      settings: { top_k: 20 }
+    });
+    
+    console.log('=== 20件検索結果分析 ===');
+    console.log('Success:', result.success);
+    console.log('Data length:', Array.isArray(result.data) ? result.data.length : 'not array');
+    console.log('Expected: 20');
+    console.log('Match:', Array.isArray(result.data) && result.data.length === 20);
+    
+    assert.ok(result.success, '20件検索が成功');
+    assert.ok(Array.isArray(result.data), 'データが配列');
+    assert.strictEqual(result.data.length, 20, '正確に20件取得');
+  } finally {
+    cleanupConnection(ws);
+  }
+});
+
+// デバッグテストの実行（後方互換性のため残す）
+export async function runDebugWebSocketTests() {
+  return { success: true, message: '個別デバッグテストを実行してください' };
 }
 
-// 単体実行用
-if (import.meta.url === `file://${process.argv[1]}`) {
-  test('WebSocket直接通信デバッグテスト', async () => {
-    const result = await runDebugWebSocketTests();
-    console.log('\n🎯 最終結果:', JSON.stringify(result, null, 2));
-    
-    if (!result.success) {
-      throw new Error(`デバッグテスト失敗: ${result.error}`);
-    }
-    
-    // 問題の特定
-    if (result.analysis.problem_identified) {
-      console.log('\n❌ 問題を特定:');
-      console.log(`  期待件数: ${result.analysis.expected_count}`);
-      console.log(`  実際件数: ${result.analysis.actual_count}`);
-      console.log(`  ストリーミングモード: ${result.analysis.streaming_mode}`);
-      console.log(`  チャンク数: ${result.analysis.chunk_count}`);
-      console.log(`  総メッセージ数: ${result.analysis.total_messages}`);
-    } else {
-      console.log('\n✓ 10件検索は正常に動作しています');
-    }
-  });
-}
+// 単体実行用の条件は削除（個別テストが実行されるため）
