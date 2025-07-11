@@ -278,15 +278,13 @@ class SearchSettings:
         self.user_filter = UserFilterSettings()
         self.date_filter = DateFilterSettings()
         self.top_k = TopKSettings(initial_top_k)
-        self.remove_duplicates = True
     
     def to_dict(self) -> Dict[str, Any]:
         """設定をDict形式にシリアライズ"""
         return {
             "user_filter": self.user_filter.filter_settings,
             "date_filter": self.date_filter.filter_settings,
-            "top_k": self.top_k.get_top_k(),
-            "remove_duplicates": self.remove_duplicates
+            "top_k": self.top_k.get_top_k()
         }
     
     @classmethod
@@ -305,16 +303,5 @@ class SearchSettings:
         if "date_filter" in data:
             settings.date_filter.filter_settings = data["date_filter"]
         
-        # remove_duplicatesの設定を復元
-        if "remove_duplicates" in data:
-            settings.remove_duplicates = data["remove_duplicates"]
-        
         return settings
     
-    def set_remove_duplicates(self, remove_duplicates: bool):
-        """重複除去設定を更新"""
-        self.remove_duplicates = remove_duplicates
-    
-    def get_remove_duplicates(self) -> bool:
-        """重複除去設定を取得"""
-        return self.remove_duplicates

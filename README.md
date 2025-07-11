@@ -101,7 +101,7 @@ embeddings/ (.safetensorsファイル + meta.json)
 - **処理方式**: 分割処理による安全性確保
 - **中断・再開**: vectorize.pyで対応
 - **統合アーキテクチャ**: SearchEngine中心の一元化（MCP/CLI統一）
-- **設定管理**: SearchSettings（ユーザー・日付フィルタリング、表示件数、重複除去）
+- **設定管理**: SearchSettings（ユーザー・日付フィルタリング、表示件数）、重複除去は常時有効
 
 ## 依存関係
 

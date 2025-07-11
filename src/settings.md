@@ -30,7 +30,7 @@
 ### SearchSettings統合クラスによる設定管理の一元化
 **Problem**: UserFilterSettings、DateFilterSettings、TopKSettingsの3つのクラスが分離しており、設定の受け渡しや管理が煩雑になっていた。また、ネットワーク通信でのシリアライズ・デシリアライズ機能が不足していた。
 
-**Solution**: SearchSettingsクラスを新設し、3つの設定クラスを統合管理する設計を採用。to_dict()メソッドで全設定をDict形式にシリアライズし、from_dict()メソッドでDict形式から設定を復元する機能を実装。重複除去設定(remove_duplicates)も統合管理し、設定の一元化を実現。これにより、WebSocket通信での設定送受信と、複数の設定クラスの協調動作を単純化した。
+**Solution**: SearchSettingsクラスを新設し、3つの設定クラスを統合管理する設計を採用。to_dict()メソッドで全設定をDict形式にシリアライズし、from_dict()メソッドでDict形式から設定を復元する機能を実装。重複除去は検索結果の質を向上させる基本機能であるため常時有効とし、設定項目から除外。これにより、WebSocket通信での設定送受信と、複数の設定クラスの協調動作を単純化した。
 
 ### ユーザー投稿数データの分離による設計改善
 **Problem**: UserFilterSettingsがuser_post_countsを内部に保持していたため、設定クラスが大量のユーザーデータを抱え込み、シリアライズ時の通信量増大と設定クラスの肥大化が発生していた。また、user_post_countsは設定データではなく参照データであるにも関わらず、設定と同列に扱われていた。

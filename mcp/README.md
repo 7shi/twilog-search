@@ -9,7 +9,7 @@ Twilog検索システム用のMCP（Model Context Protocol）サーバーです�
 1. **search_similar** - ベクトル検索
    - twilog_server.pyを通じた意味的検索
    - SearchEngineによるフィルタリング（サーバー側処理）
-   - 重複除去機能
+   - 重複除去機能（常時有効）
    - SearchSettings対応（ユーザー・日付フィルタリング、表示件数制御）
 
 2. **get_status** - サーバー状態確認
@@ -121,13 +121,12 @@ node dist/index.js [オプション]
     "date_filter": {
       "from": "2023-01-01 00:00:00",
       "to": "2023-12-31 23:59:59"
-    },
-    "remove_duplicates": true
+    }
   }
 }
 ```
 
-**個別パラメータ対応**: `user_filter`、`date_filter`、`top_k`、`remove_duplicates`を個別に指定可能。MCPサーバー内部でSearchSettings形式に変換してサーバーに送信。
+**個別パラメータ対応**: `user_filter`、`date_filter`、`top_k`を個別に指定可能。MCPサーバー内部でSearchSettings形式に変換してサーバーに送信。重複除去は常時有効。
 
 ### ユーザー統計取得
 
@@ -235,7 +234,7 @@ npm start -- --websocket ws://localhost:9999
 
 - **ユーザーフィルタリング**: includes/excludes、投稿数閾値によるフィルタリング
 - **日付フィルタリング**: from/to による期間指定フィルタリング
-- **重複除去**: 同一ユーザー・同一内容の投稿で古い投稿を優先
+- **重複除去**: 同一ユーザー・同一内容の投稿で古い投稿を優先（常時有効）
 - **ランキング**: 類似度順でのソート
 - **SearchSettings**: CLIクライアントと完全に同一の設定形式をサポート
 

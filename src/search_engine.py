@@ -121,18 +121,17 @@ class SearchEngine:
             
             key = (user, content)
             
-            # 重複チェック（重複除去が有効な場合のみ）
-            if search_settings.remove_duplicates:
-                if key in seen_combinations:
-                    # 既存の投稿と同じユーザー・内容の場合、日付が古い方を優先
-                    _, _, existing_timestamp, _ = seen_combinations[key]
-                    if timestamp < existing_timestamp:
-                        # 現在の投稿の方が古い場合、既存を置き換え
-                        seen_combinations[key] = (post_id, similarity, timestamp, url)
-                    continue
-                
-                # 新しい組み合わせの場合、追加
-                seen_combinations[key] = (post_id, similarity, timestamp, url)
+            # 重複チェック（常に有効）
+            if key in seen_combinations:
+                # 既存の投稿と同じユーザー・内容の場合、日付が古い方を優先
+                _, _, existing_timestamp, _ = seen_combinations[key]
+                if timestamp < existing_timestamp:
+                    # 現在の投稿の方が古い場合、既存を置き換え
+                    seen_combinations[key] = (post_id, similarity, timestamp, url)
+                continue
+            
+            # 新しい組み合わせの場合、追加
+            seen_combinations[key] = (post_id, similarity, timestamp, url)
             
             yield rank, similarity, {
                 'post_id': post_id,

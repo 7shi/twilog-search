@@ -119,10 +119,6 @@ class TwilogMCPServer {
                     },
                   },
                 },
-                remove_duplicates: {
-                  type: 'boolean',
-                  description: '重複除去設定',
-                },
               },
               required: ['query'],
             },
@@ -402,7 +398,7 @@ class TwilogMCPServer {
 
 
   private async handleTwilogSearch(args: any) {
-    const { query, top_k, user_filter, date_filter, remove_duplicates } = args;
+    const { query, top_k, user_filter, date_filter } = args;
     
     if (!query) {
       throw new Error('検索クエリが指定されていません');
@@ -427,9 +423,6 @@ class TwilogMCPServer {
         settings.date_filter = date_filter;
       }
       
-      if (remove_duplicates !== undefined) {
-        settings.remove_duplicates = remove_duplicates;
-      }
       
       // settingsが空でない場合のみ追加
       if (Object.keys(settings).length > 0) {
