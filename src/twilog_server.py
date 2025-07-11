@@ -193,7 +193,7 @@ class TwilogServer(EmbedServer):
         filtered_results = []
         top_k = search_settings.top_k.get_top_k()
         
-        for result in self.search_engine.search(all_results, search_settings):
+        for result in self.search_engine.filter_search(all_results, search_settings):
             filtered_results.append(result)
             if len(filtered_results) >= top_k:
                 break

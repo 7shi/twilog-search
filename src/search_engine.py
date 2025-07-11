@@ -23,7 +23,7 @@ class SearchEngine:
         # ユーザー情報の読み込み
         self.post_user_map, self.user_post_counts = self.data_access.load_user_data()
     
-    def search(self, vector_search_results: List[Tuple[int, float]], search_settings: SearchSettings) -> Generator[Tuple[int, float, dict], None, None]:
+    def filter_search(self, vector_search_results: List[Tuple[int, float]], search_settings: SearchSettings) -> Generator[Tuple[int, float, dict], None, None]:
         """
         ベクトル検索の結果を絞り込む
         
