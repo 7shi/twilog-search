@@ -18,3 +18,7 @@ tags
 
 # Binary and model files
 *.safetensors
+
+# MCP settings
+.mcp.json
+.gemini/settings.json
