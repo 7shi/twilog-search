@@ -1,6 +1,6 @@
 # Twilog ログ検索
 
-Twilogのエクスポートデータからベクトル検索とタグ検索を可能にするデータ処理システム。
+Twilogのエクスポートデータからベクトル検索とタグ検索（予定）を可能にするデータ処理システム。
 
 ## 概要
 
@@ -52,8 +52,8 @@ uv run src/search.py
 - **アーキテクチャ**: twilog_server.pyのsearch_similarメソッド使用
 
 ### 4. MCP統合段階（オプション）
+対話的クライアントからNode.js MCPサーバー起動
 ```bash
-# Node.js MCPサーバー起動と対話的クライアント
 uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js
 ```
 - **Node.js MCPサーバー**: TypeScript実装のMCPラッパー（twilog-mcp-server）
