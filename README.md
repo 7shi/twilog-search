@@ -2,9 +2,19 @@
 
 Twilogのエクスポートデータからベクトル検索とタグ検索を可能にするデータ処理システム。
 
+## 概要
+
+CSVデータをベクトル化し、意味的類似性に基づく検索を実現するシステムです。クライアント・サーバーアーキテクチャを採用しており、WebSocketベースの検索サーバーに対してCLIクライアントとMCPクライアントの両方からアクセス可能です。
+
+- **データ処理**: CSVファイルをRuri3モデルでベクトル化
+- **検索方式**: 意味的類似性による高精度検索
+- **アーキテクチャ**: WebSocketサーバー + 複数クライアント対応
+- **クライアント**: CLI（search.py）とMCPサーバー（twilog-mcp-server）の2種類
+- **実装言語**: サーバー・CLIクライアント（Python）、MCPサーバー（TypeScript）
+
 ## データ概要
 
-- **ソースデータ**: twilog.csv（227,011件のTwilogエクスポートデータ）
+- **ソースデータ**: twilog.csv（Twilogエクスポートデータ、UTF-8形式）
 - **処理対象**: 投稿ID、URL、タイムスタンプ、コンテンツ、ログタイプ
 
 ## 実行手順
@@ -14,7 +24,7 @@ Twilogのエクスポートデータからベクトル検索とタグ検索を�
 uv run src/vectorize.py
 ```
 - **入力**: twilog.csv（直接読み込み）
-- **出力**: embeddings/ディレクトリ（226個の.safetensorsファイル）
+- **出力**: embeddings/ディレクトリ（.safetensorsファイル）
 - **処理内容**: Ruri3モデルによる1000件ずつの分割処理
 - **処理時間**: 約1時間56分（GPU環境）
 - **特徴**: 中断・再開機能対応、SQLiteデータベース不要
@@ -56,9 +66,9 @@ uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js
 ## データフロー
 
 ```
-twilog.csv (227,011件)
+twilog.csv
     ↓ vectorize.py (CSVから直接ベクトル化)
-embeddings/ (226個の.safetensorsファイル + meta.json)
+embeddings/ (.safetensorsファイル + meta.json)
     ↓ twilog_server.py (WebSocketサーバー + SearchEngine統合 + MCP互換メソッド)
     ├─ search.py (軽量フロントエンド)
     └─ twilog-mcp-server (単純WebSocketラッパー) 
@@ -78,7 +88,7 @@ embeddings/ (226個の.safetensorsファイル + meta.json)
 
 | ファイル | 件数 | 説明 |
 |---------|------|------|
-| embeddings/*.safetensors | 226ファイル | ベクトルデータ |
+| embeddings/*.safetensors | 複数ファイル | ベクトルデータ |
 | tags/*.jsonl | 任意 | 自動生成タグ（オプション） |
 
 ## 技術仕様
