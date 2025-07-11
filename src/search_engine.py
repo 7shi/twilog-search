@@ -170,13 +170,43 @@ class SearchEngine:
             
             rank += 1
     
-    def vector_search(self, query_vector: Any, params: dict = None) -> List[dict]:
+    def is_post_text_match(self, post_id: int, include_terms: List[str], exclude_terms: List[str]) -> bool:
+        """
+        単一投稿がテキスト条件に合致するかチェック
+        
+        Args:
+            post_id: 投稿ID
+            include_terms: 含む条件の検索語リスト
+            exclude_terms: 除外条件の検索語リスト
+            
+        Returns:
+            条件に合致するかのbool値
+        """
+        post_data = self.data_access.posts_data.get(post_id, {})
+        content = post_data.get("content", "").lower()
+        
+        # include_termsの全てが含まれているかチェック
+        if include_terms:
+            include_match = all(term.lower() in content for term in include_terms)
+            if not include_match:
+                return False
+        
+        # exclude_termsのいずれも含まれていないかチェック
+        if exclude_terms:
+            exclude_match = any(term.lower() in content for term in exclude_terms)
+            if exclude_match:
+                return False
+        
+        return True
+    
+    def vector_search(self, query_vector: Any, top_k: int = None, text_filter: str = "") -> List[dict]:
         """
         ベクトル検索を実行（Streaming Extensions対応）
         
         Args:
             query_vector: クエリベクトル
-            params: 検索パラメータ
+            top_k: 取得件数制限
+            text_filter: テキストフィルタリング条件（V|T検索用）
             
         Returns:
             チャンク形式の検索結果
@@ -194,7 +224,6 @@ class SearchEngine:
                 "start_rank": 1,
             }]
         
-        top_k = params.get("top_k", None) if params else None
         
         # コサイン類似度の計算
         import torch.nn.functional as F
@@ -204,18 +233,28 @@ class SearchEngine:
         import torch
         sorted_indices = torch.argsort(similarities, descending=True)
         
-        # top_kがNoneの場合は全件、指定されている場合は制限
-        if top_k is None:
-            target_indices = sorted_indices
-        else:
-            target_indices = sorted_indices[:top_k]
+        # テキストフィルタリング条件を準備
+        text_include_terms = []
+        text_exclude_terms = []
+        if text_filter:
+            text_include_terms, text_exclude_terms = parse_search_terms(text_filter)
         
-        # 結果を作成
+        # 結果を作成（フィルタリングしながらtop_kまで収集）
         results = []
-        for idx in target_indices:
+        for idx in sorted_indices:
             post_id = self.post_ids[idx.item()]
             similarity = similarities[idx].item()
+            
+            # テキストフィルタリングを適用
+            if text_filter:
+                if not self.is_post_text_match(post_id, text_include_terms, text_exclude_terms):
+                    continue
+            
             results.append((post_id, similarity))
+            
+            # top_kに達したら終了
+            if top_k is not None and len(results) >= top_k:
+                break
         
         # Streaming Extensions対応: 結果を分割（2万件ずつ）
         chunk_size = 20000
@@ -237,26 +276,27 @@ class SearchEngine:
         
         return chunks
     
-    def search_similar(self, query_vector: Any, search_settings: SearchSettings) -> List[dict]:
+    def search_similar(self, query_vector: Any, search_settings: SearchSettings, text_filter: str = "") -> List[dict]:
         """
         類似検索を実行（フィルタリング付き）
         
         Args:
             query_vector: クエリベクトル
             search_settings: 検索設定
+            text_filter: テキストフィルタリング条件（V|T検索用）
             
         Returns:
             フィルタリング済み検索結果
         """
-        # ベクトル検索を実行
-        vector_search_results = self.vector_search(query_vector)
+        # ベクトル検索を実行（テキストフィルタリング付き、top_kは後で適用）
+        vector_search_results = self.vector_search(query_vector, top_k=None, text_filter=text_filter)
         
         # チャンク形式の結果を統合
         all_results = []
         for chunk in vector_search_results:
             all_results.extend(chunk.get("data", []))
         
-        # フィルタリング
+        # フィルタリング（ユーザー・日付フィルタリング）
         filtered_results = []
         top_k = search_settings.top_k.get_top_k()
         
@@ -285,38 +325,6 @@ class SearchEngine:
         user_stats.sort(key=lambda x: x["post_count"], reverse=True)
         
         return user_stats[:limit]
-    
-    def filter_posts_by_text(self, include_terms: List[str], exclude_terms: List[str]) -> List[int]:
-        """
-        テキスト条件で投稿をフィルタリング
-        
-        Args:
-            include_terms: 含む条件の検索語リスト
-            exclude_terms: 除外条件の検索語リスト
-            
-        Returns:
-            条件に合致する投稿IDのリスト
-        """
-        filtered_post_ids = []
-        
-        for post_id, post_data in self.data_access.posts_data.items():
-            content = post_data.get("content", "").lower()
-            
-            # include_termsの全てが含まれているかチェック
-            if include_terms:
-                include_match = all(term.lower() in content for term in include_terms)
-                if not include_match:
-                    continue
-            
-            # exclude_termsのいずれも含まれていないかチェック
-            if exclude_terms:
-                exclude_match = any(term.lower() in content for term in exclude_terms)
-                if exclude_match:
-                    continue
-            
-            filtered_post_ids.append(post_id)
-        
-        return filtered_post_ids
     
     def get_database_stats(self) -> dict:
         """
@@ -361,21 +369,19 @@ class SearchEngine:
         # 検索語をパース
         include_terms, exclude_terms = parse_search_terms(search_term)
         
-        # テキスト条件でフィルタリング
-        filtered_post_ids = self.filter_posts_by_text(include_terms, exclude_terms)
-        
         # 結果を構築
         results = []
-        for post_id in filtered_post_ids:
-            post_data = self.data_access.posts_data.get(post_id, {})
-            user = self.post_user_map.get(post_id, "")
-            results.append({
-                "post_id": post_id,
-                "content": post_data.get("content", ""),
-                "timestamp": post_data.get("timestamp", ""),
-                "url": post_data.get("url", ""),
-                "user": user
-            })
+        for post_id in self.data_access.posts_data.keys():
+            if self.is_post_text_match(post_id, include_terms, exclude_terms):
+                post_data = self.data_access.posts_data.get(post_id, {})
+                user = self.post_user_map.get(post_id, "")
+                results.append({
+                    "post_id": post_id,
+                    "content": post_data.get("content", ""),
+                    "timestamp": post_data.get("timestamp", ""),
+                    "url": post_data.get("url", ""),
+                    "user": user
+                })
         
         # 新しい順でソート
         results.sort(key=lambda x: x["timestamp"], reverse=True)

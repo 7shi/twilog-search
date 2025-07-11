@@ -7,7 +7,7 @@ Twilogのエクスポートデータからベクトル検索とタグ検索（�
 CSVデータをベクトル化し、意味的類似性に基づく検索を実現するシステムです。クライアント・サーバーアーキテクチャを採用しており、WebSocketベースの検索サーバーに対してCLIクライアントとMCPクライアントの両方からアクセス可能です。
 
 - **データ処理**: CSVファイルをRuri v3モデルでベクトル化
-- **検索方式**: 意味的類似性による高精度検索
+- **検索方式**: 意味的類似性による高精度検索 + 複合検索（V|T構文）
 - **アーキテクチャ**: WebSocketサーバー + 複数クライアント対応
 - **クライアント**: CLI（search.py）とMCPサーバー（twilog-mcp-server）の2種類
 - **実装言語**: サーバー・CLIクライアント（Python）、MCPサーバー（TypeScript）
@@ -48,6 +48,10 @@ uv run src/search.py
 - **表示**: ランク・類似度・ユーザー・日時・URL・内容
 - **特徴**: 対話的検索インターフェース（フィルタリング機能復活済み）
 - **コマンド**: `/help`でヘルプ、`/user`でユーザーフィルタリング、`/date`で日付フィルタリング、`/top`で表示件数設定
+- **検索構文**: 
+  - `機械学習` - ベクトル検索のみ
+  - `| "hello world" -spam` - テキスト検索のみ
+  - `機械学習 | -spam` - ベクトル検索→テキスト絞り込み（複合検索）
 - **起動時間**: 数秒（軽量クライアント）
 - **アーキテクチャ**: twilog_server.pyのsearch_similarメソッド使用
 
@@ -83,6 +87,7 @@ embeddings/ (.safetensorsファイル + meta.json)
 - ベクトル化（vectorize.py）
 - 検索サーバー（twilog_server.py）
 - ベクトル検索（search.py）
+- V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
 - タグ付け（extract_tags.py）- CSVベース対応
 
@@ -102,6 +107,7 @@ embeddings/ (.safetensorsファイル + meta.json)
 - **中断・再開**: vectorize.pyで対応
 - **統合アーキテクチャ**: SearchEngine中心の一元化（MCP/CLI統一）
 - **設定管理**: SearchSettings（ユーザー・日付フィルタリング、表示件数）、重複除去は常時有効
+- **複合検索**: V|T構文（ベクトル|テキスト）による柔軟な検索組み合わせ
 
 ## 依存関係
 

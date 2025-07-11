@@ -26,7 +26,7 @@
 ## 検索
 - **search.py**: 軽量化された対話的検索フロントエンド（twilog_server.pyのsearch_similarメソッド使用、設定機能復活済み）
 - **search_engine.py**: ベクトル検索結果の絞り込み・フィルタリング・重複除去を担当する検索エンジン（ステートレス設計、twilog_server.pyで統合使用）
-- **text_proc.py**: 高度なテキスト検索のためのクエリパース機能（シェル風構文、クォート・エスケープ・除外条件サポート）
+- **text_proc.py**: 高度なテキスト検索のためのクエリパース機能（シェル風構文、クォート・エスケープ・除外条件サポート、V|T複合検索構文）
 - **safe_input.py**: 安全なテキスト入力機能（readline履歴管理、検証機能）
 - **settings.py**: 設定情報を格納するデータクラス（SearchSettings統合管理、シリアライズ対応）
 - **settings_ui.py**: 設定UI機能を提供する純粋関数群（search.pyで復活使用）
@@ -35,8 +35,8 @@
 このプロジェクトは責務分離を重視した統合設計を採用：
 
 - **UI層**: search.py（軽量フロントエンド + 設定管理）、safe_input.py（入力処理）、settings_ui.py（設定UI）
-- **統合サーバー層**: twilog_server.py（ベクトル検索 + SearchEngine統合 + MCP互換メソッド + 設定デシリアライズ）
-- **ロジック層**: search_engine.py（ステートレス・フィルタリング処理中核）、settings.py（統合設定データ + シリアライズ）
+- **統合サーバー層**: twilog_server.py（ベクトル検索 + SearchEngine統合 + MCP互換メソッド + 設定デシリアライズ + V|T複合検索）
+- **ロジック層**: search_engine.py（ステートレス・フィルタリング処理中核）、settings.py（統合設定データ + シリアライズ）、text_proc.py（クエリパース）
 - **データ層**: data_csv.py（CSVアクセス）
 - **通信層**: twilog_client.py（WebSocket通信 + SearchSettings対応）、embed_server.py（サーバー基盤）
 
@@ -47,6 +47,7 @@
 - **設定統合**: SearchSettingsによる3つの設定クラス統合管理、シリアライズ対応
 - **軽量化**: search.pyは設定管理＋表示に特化、検索・フィルタリングはサーバー側で実行
 - **ラッパー化**: MCPサーバーは単純なWebSocketラッパーとして簡素化
+- **複合検索**: V|T構文による透過的なベクトル・テキスト複合検索（クライアント変更不要）
 
 ## データファイル
 - **標準データファイル**: `twilog.csv`（デフォルト、引数省略可能）

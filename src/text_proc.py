@@ -73,6 +73,42 @@ def parse_search_terms(text: str) -> Tuple[List[str], List[str]]:
     return include_terms, exclude_terms
 
 
+def parse_pipeline_query(query: str) -> Tuple[str, str]:
+    """
+    パイプライン構文（V|T）をパースする
+    
+    Args:
+        query: パース対象のクエリ文字列
+        
+    Returns:
+        (vector_query, text_query)のタプル
+        vector_query: ベクトル検索クエリ（左側、空文字列可）
+        text_query: テキスト検索クエリ（右側、空文字列可）
+    """
+    # エスケープされていないパイプ文字を探す
+    i = 0
+    while i < len(query):
+        if query[i] == '\\' and i + 1 < len(query):
+            # エスケープされた文字をスキップ
+            i += 2
+        elif query[i] == '|':
+            # パイプ文字が見つかった
+            vector_query = query[:i].strip()
+            text_query = query[i+1:].strip()
+            
+            # エスケープされたパイプ文字を元に戻す
+            vector_query = vector_query.replace('\\|', '|')
+            text_query = text_query.replace('\\|', '|')
+            
+            return vector_query, text_query
+        else:
+            i += 1
+    
+    # パイプ文字が見つからない場合、全体をベクトル検索クエリとして扱う
+    clean_query = query.replace('\\|', '|')
+    return clean_query, ""
+
+
 def test_parse_search_terms():
     """テスト関数"""
     test_cases = {
