@@ -3,26 +3,12 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert';
 import { initializeSharedServer, cleanupSharedServer, getSharedClient, parseTestArgs } from './base-client.js';
-import { runWebSocketDirectTests } from './websocket-direct.test.js';
+// WebSocket直接通信テストは個別ファイルで実行される
 
 
 const { dbPath, websocketUrl } = parseTestArgs();
 
-// WebSocket直接通信テスト（MCPサーバー起動前）
-describe('WebSocket直接通信テスト', () => {
-  test('WebSocket直接通信の性能とプロトコル検証', async () => {
-    const result = await runWebSocketDirectTests();
-    assert.ok(result.success, 'WebSocket直接通信テストが成功');
-    assert.ok(result.tests.length === 5, '5つのテストが実行された');
-    
-    // 各テスト結果の検証
-    assert.ok(result.results.status.success, 'サーバー状態確認が成功');
-    assert.ok(result.results.small.success, '小規模検索が成功');
-    assert.ok(result.results.medium.success, '中規模検索が成功');
-    assert.ok(result.results.large.success, '大規模検索が成功');
-    assert.ok(result.results.chunked.success, '分割送信テストが成功');
-  });
-});
+// WebSocket直接通信テストは個別にwebsocket-direct.test.js内で実行される
 
 describe('全テストスイート', () => {
   before(async () => {

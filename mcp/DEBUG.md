@@ -83,6 +83,35 @@ resolve = (result) => {
 };
 ```
 
+### 4. テスト統合関数の戻り値構造エラー
+
+**症状**: 
+```
+TypeError [Error]: Cannot read properties of undefined (reading 'length')
+```
+
+**原因**:
+- `runWebSocketDirectTests()`関数が不適切な戻り値構造を返している
+- `result.tests`が存在しないため`.length`プロパティでエラー発生
+- 統合テスト関数と個別テストの責任分離が不明確
+
+**解決方法**:
+```javascript
+// 修正前（問題のあるコード）
+export async function runWebSocketDirectTests() {
+  return { success: true, message: '個別テストを実行してください' };
+}
+
+// 修正後（統合テストを削除し、個別テストを直接実行）
+// all.test.js から以下のテストを削除
+describe('WebSocket直接通信テスト', () => {
+  test('WebSocket直接通信の性能とプロトコル検証', async () => {
+    const result = await runWebSocketDirectTests();
+    assert.ok(result.tests.length === 5, '5つのテストが実行された'); // ←エラー発生箇所
+  });
+});
+```
+
 ## パフォーマンス改善結果
 
 ### 実行時間の大幅短縮

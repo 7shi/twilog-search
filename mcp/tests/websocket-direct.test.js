@@ -264,8 +264,4 @@ test('分割送信テスト (50000件)', async () => {
   }
 });
 
-// エクスポート用のテスト関数（後方互換性のため残す）
-export async function runWebSocketDirectTests() {
-  // 個別テストが実行されるため、この関数は空にする
-  return { success: true, message: '個別テストを実行してください' };
-}
+// 個別テストが直接実行されるため、エクスポート関数は削除
