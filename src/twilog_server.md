@@ -101,3 +101,8 @@
 **Problem**: SearchEngineの`vector_search`メソッドが返すチャンク配列をそのまま返すと、embed_serverの新しいStreaming Extensions判定条件（`streamingフィールドのみを含む辞書`）に適合せず、分割送信処理が実行されない問題があった。
 
 **Solution**: `vector_search`メソッドでSearchEngineから取得したチャンク配列を`{"streaming": chunks}`形式でラッピングして返すように修正。これにより、embed_serverのStreaming Extensions処理（`isinstance(result, dict) and len(result) == 1 and "streaming" in result`）が正しく判定され、大容量検索結果の分割送信が適切に動作。責務分離を保ちながら、新しいStreaming Extensions仕様に完全準拠した。
+
+### top_kバリデーションによる不正なリクエスト制限
+**Problem**: 極端に大きな`top_k`値（1000件、50000件など）のリクエストが送信されると、サーバーリソースの過度な消費やメモリ不足によるクラッシュが発生する可能性があった。
+
+**Solution**: `search_similar`メソッドで`top_k`値の事前バリデーションを実装。`top_k < 1 or top_k > 100`の場合に`ValueError`を発生させ、適切な範囲外であることを明確にエラーメッセージで通知。これにより、サーバーリソースの保護とクライアントへの明確なフィードバックを実現し、システム安定性を向上させた。

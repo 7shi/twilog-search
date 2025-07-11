@@ -41,12 +41,6 @@ class TwilogServer(EmbedServer):
     
     async def vector_search(self, params: dict = None):
         """類似検索を実行（Streaming Extensions対応）"""
-        if not self.init_completed:
-            raise RuntimeError("モデルがまだ初期化されていません")
-        
-        if not self.search_engine.initialized:
-            raise RuntimeError("SearchEngineが初期化されていません")
-        
         query = params.get("query") if params else None
         if not query:
             raise ValueError("Invalid params: query is required")
@@ -62,12 +56,6 @@ class TwilogServer(EmbedServer):
     
     async def search_similar(self, params: dict = None):
         """類似検索を実行（フィルタリング付き）"""
-        if not self.init_completed:
-            raise RuntimeError("モデルがまだ初期化されていません")
-        
-        if not self.search_engine.initialized:
-            raise RuntimeError("SearchEngineが初期化されていません")
-        
         query = params.get("query") if params else None
         if not query:
             raise ValueError("Invalid params: query is required")
@@ -78,6 +66,11 @@ class TwilogServer(EmbedServer):
             search_settings = SearchSettings.from_dict(search_settings_dict)
         else:
             search_settings = SearchSettings()
+        
+        # top_kのバリデーション
+        top_k = search_settings.top_k.get_top_k()
+        if top_k < 1 or top_k > 100:
+            raise ValueError(f"top_k must be between 1 and 100, got {top_k}")
         
         # クエリをベクトル化
         query_vector = self._embed_text(query)
@@ -98,9 +91,6 @@ class TwilogServer(EmbedServer):
     
     async def get_user_stats(self, params: dict = None):
         """ユーザー統計を取得"""
-        if not self.search_engine.initialized:
-            raise RuntimeError("SearchEngineが初期化されていません")
-        
         limit = params.get("limit", 50) if params else 50
         
         # SearchEngineに委譲
@@ -108,17 +98,11 @@ class TwilogServer(EmbedServer):
     
     async def get_database_stats(self, params: dict = None):
         """データベース統計を取得"""
-        if not self.search_engine.initialized:
-            raise RuntimeError("SearchEngineが初期化されていません")
-        
         # SearchEngineに委譲
         return self.search_engine.get_database_stats()
     
     async def search_posts_by_text(self, params: dict = None):
         """テキスト検索を実行"""
-        if not self.search_engine.initialized:
-            raise RuntimeError("SearchEngineが初期化されていません")
-        
         search_term = params.get("search_term") if params else None
         if not search_term:
             raise ValueError("Invalid params: search_term is required")
@@ -127,14 +111,6 @@ class TwilogServer(EmbedServer):
         
         # SearchEngineに委譲
         return self.search_engine.search_posts_by_text(search_term, limit)
-    
-    async def get_status(self, params: dict = None):
-        """ステータスを取得"""
-        response = await super().get_status(params)
-        embeddings_loaded = len(self.search_engine.post_ids) if self.search_engine.initialized else 0
-        response["embeddings_loaded"] = embeddings_loaded
-        response["search_engine_ready"] = self.search_engine.initialized
-        return response
 
 
 async def main():
