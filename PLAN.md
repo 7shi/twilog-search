@@ -103,7 +103,7 @@ twilog/
 ├── search.py                 # 軽量検索クライアント（フロントエンド化）
 ├── search_engine.py          # フィルタリング機能の中核
 ├── data_csv.py               # CSVベースデータアクセス層
-├── extract_tags.py           # CSVベースタグ付けスクリプト（完了）
+├── add_tags.py               # CSVベースタグ付けスクリプト（完了）
 └── mcp/src/index.ts          # MCPラッパー（SQLite実装削除済み）
 ```
 
@@ -133,7 +133,7 @@ twilog/
   - twilog_server.pyの各メソッドを直接転送
   - SQLiteベース実装削除によるシンプル化
   - database.ts/filters.ts削除済み
-- **extract_tags.py**: CSVベースタグ付けスクリプト
+- **add_tags.py**: CSVベースタグ付けスクリプト
   - data_csv.pyによるCSVファイル直接読み込み
   - strip_content関数による前処理統合
   - SQLiteデータベース構築不要

@@ -223,7 +223,7 @@ uv run mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js --db /path/t
 
 #### 9. タグ付け段階（進行中）
 ```bash
-uv run extract_tags.py
+uv run add_tags.py
 ```
 - **入力**: twilog.db（processed_contentテーブル）
 - **出力**: tags/ディレクトリ（JSONLファイル群）

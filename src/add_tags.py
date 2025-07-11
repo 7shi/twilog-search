@@ -130,7 +130,7 @@ def save_tag_record(record: dict, output_dir: Path, file_index: int) -> None:
     except Exception as e:
         print(f"保存エラー: {e}")
 
-def extract_tags_from_csv(
+def add_tags_from_csv(
     csv_path: str,
     output_dir: str,
     model: str = "ollama:qwen3:4b",
@@ -218,7 +218,7 @@ def main():
     
     args = parser.parse_args()
     
-    extract_tags_from_csv(
+    add_tags_from_csv(
         args.csv_file,
         args.output,
         args.model,

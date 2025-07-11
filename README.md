@@ -89,7 +89,7 @@ embeddings/ (.safetensorsファイル + meta.json)
 - ベクトル検索（search.py）
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
-- タグ付け（extract_tags.py）- CSVベース対応
+- タグ付け（add_tags.py）- CSVベース対応
 
 ## 出力ファイル
 
