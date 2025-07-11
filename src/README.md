@@ -26,6 +26,7 @@
 ## 検索
 - **search.py**: 軽量化された対話的検索フロントエンド（twilog_server.pyのsearch_similarメソッド使用、設定機能復活済み）
 - **search_engine.py**: ベクトル検索結果の絞り込み・フィルタリング・重複除去を担当する検索エンジン（ステートレス設計、twilog_server.pyで統合使用）
+- **text_proc.py**: 高度なテキスト検索のためのクエリパース機能（シェル風構文、クォート・エスケープ・除外条件サポート）
 - **safe_input.py**: 安全なテキスト入力機能（readline履歴管理、検証機能）
 - **settings.py**: 設定情報を格納するデータクラス（SearchSettings統合管理、シリアライズ対応）
 - **settings_ui.py**: 設定UI機能を提供する純粋関数群（search.pyで復活使用）

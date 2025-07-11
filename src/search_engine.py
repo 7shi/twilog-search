@@ -6,6 +6,7 @@ from typing import List, Tuple, Generator, Any, Optional
 from pathlib import Path
 from settings import SearchSettings
 from data_csv import TwilogDataAccess
+from text_proc import parse_search_terms
 
 
 class SearchEngine:
@@ -285,6 +286,38 @@ class SearchEngine:
         
         return user_stats[:limit]
     
+    def filter_posts_by_text(self, include_terms: List[str], exclude_terms: List[str]) -> List[int]:
+        """
+        テキスト条件で投稿をフィルタリング
+        
+        Args:
+            include_terms: 含む条件の検索語リスト
+            exclude_terms: 除外条件の検索語リスト
+            
+        Returns:
+            条件に合致する投稿IDのリスト
+        """
+        filtered_post_ids = []
+        
+        for post_id, post_data in self.data_access.posts_data.items():
+            content = post_data.get("content", "").lower()
+            
+            # include_termsの全てが含まれているかチェック
+            if include_terms:
+                include_match = all(term.lower() in content for term in include_terms)
+                if not include_match:
+                    continue
+            
+            # exclude_termsのいずれも含まれていないかチェック
+            if exclude_terms:
+                exclude_match = any(term.lower() in content for term in exclude_terms)
+                if exclude_match:
+                    continue
+            
+            filtered_post_ids.append(post_id)
+        
+        return filtered_post_ids
+    
     def get_database_stats(self) -> dict:
         """
         データベース統計を取得
@@ -325,18 +358,24 @@ class SearchEngine:
         Returns:
             検索結果リスト
         """
+        # 検索語をパース
+        include_terms, exclude_terms = parse_search_terms(search_term)
+        
+        # テキスト条件でフィルタリング
+        filtered_post_ids = self.filter_posts_by_text(include_terms, exclude_terms)
+        
+        # 結果を構築
         results = []
-        for post_id, post_data in self.data_access.posts_data.items():
-            content = post_data.get("content", "")
-            if search_term.lower() in content.lower():
-                user = self.post_user_map.get(post_id, "")
-                results.append({
-                    "post_id": post_id,
-                    "content": content,
-                    "timestamp": post_data.get("timestamp", ""),
-                    "url": post_data.get("url", ""),
-                    "user": user
-                })
+        for post_id in filtered_post_ids:
+            post_data = self.data_access.posts_data.get(post_id, {})
+            user = self.post_user_map.get(post_id, "")
+            results.append({
+                "post_id": post_id,
+                "content": post_data.get("content", ""),
+                "timestamp": post_data.get("timestamp", ""),
+                "url": post_data.get("url", ""),
+                "user": user
+            })
         
         # 新しい順でソート
         results.sort(key=lambda x: x["timestamp"], reverse=True)

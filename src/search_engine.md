@@ -49,3 +49,13 @@
 **Problem**: SearchEngineの`initialize()`メソッドでembeddings読み込みも実行されるため、TwilogServerの初期化時間が長大になっていた。
 
 **Solution**: embeddings読み込みを`vector_search()`メソッドの初回実行時に遅延読み込みする設計に変更。`if self.vectors is None: self._load_embeddings()`による条件分岐で、検索処理が実際に必要になるまでembeddings読み込みを延期。CSV・ユーザーデータの読み込みは`initialize()`で実行し、embeddings読み込みのみを遅延させる２段階初期化アーキテクチャを採用。
+
+### 高度なテキスト検索機能の実装
+**Problem**: 単純な文字列マッチングでは、複数キーワードの組み合わせや除外条件を含む検索クエリに対応できず、柔軟な検索ができない問題があった。
+
+**Solution**: シェル風パース機能（`text_proc.py`）を導入し、ダブルクォート・エスケープ・除外条件（-記号）をサポート。`search_posts_by_text()`でパースされた条件をAND/NOT論理で処理し、高度なテキスト検索を実現。
+
+### テキストフィルタリング機能の分離
+**Problem**: テキスト検索のフィルタリングロジックが`search_posts_by_text()`に埋め込まれており、将来的な複合検索（ベクトル検索結果のテキスト絞り込み）に再利用できない構造だった。
+
+**Solution**: `filter_posts_by_text()`メソッドを分離し、include_terms/exclude_termsを受け取って投稿IDリストを返却する設計に変更。テキストフィルタリングロジックの再利用性を確保し、V→T複合検索の実装基盤を整備。
