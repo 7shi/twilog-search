@@ -94,3 +94,8 @@
 **Problem**: 従来の1秒ごとのポーリングによるサーバー運用（`while self.running: await asyncio.sleep(1)`）は、不要なCPU使用量と非効率的な停止処理を引き起こしていた。
 
 **Solution**: WebSocketサーバーの`serve_forever()`メソッドを採用し、イベント駆動型の効率的なサーバー運用に変更。停止処理は`stop_server`メソッドで`server.close()`と`await server.wait_closed()`を呼び出すことで適切にリソースを解放。BaseEmbedServerクラスに`_start_server()`と`_stop_server()`メソッドを導入し、サーバーライフサイクル管理を統一化。
+
+### モデル指定の必須化によるエラー予防
+**Problem**: モデル名が空文字列で初期化された場合、後続のモデル初期化処理で分かりにくいエラーが発生し、問題の特定が困難だった。
+
+**Solution**: `init_model`メソッドの開始時に`self.model_name`の妥当性をチェックし、空文字列や未設定の場合は明確なエラーメッセージ「モデルが指定されていません」を表示する早期エラーハンドリングを実装。これにより、設定ミスやメタデータ不備による問題を初期化段階で迅速に特定可能。

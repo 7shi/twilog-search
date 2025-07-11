@@ -1,12 +1,9 @@
 #!/usr/bin/env python3
 import asyncio
-import json
-import os
 import sys
 import time
 import argparse
 from pathlib import Path
-from typing import Optional, Any, List, Tuple
 from embed_server import EmbedServer, check_server_status, stop_server, start_daemon
 from settings import SearchSettings
 from search_engine import SearchEngine
@@ -15,27 +12,16 @@ from search_engine import SearchEngine
 class TwilogServer(EmbedServer):
     """Twilog検索サーバー：embeddings読み込みとベクトル検索機能付き"""
     
-    def __init__(self, embeddings_dir: str, metadata: dict):
+    def __init__(self, embeddings_dir: str):
         self.embeddings_dir = Path(embeddings_dir)
-        self.metadata = metadata
-        model_name = metadata["model"]  # modelが存在しない場合はエラー
-        
-        super().__init__(model_name)
         
         # SearchEngineインスタンスを生成（初期化は後で行う）
-        csv_path = self._load_csv_path()
-        self.search_engine = SearchEngine(csv_path, self.embeddings_dir, self.metadata)
-
-    def _load_csv_path(self) -> str:
-        """meta.jsonからCSVパスを取得し、絶対パスに変換"""
-        csv_relative_path = self.metadata.get("csv_path")
-        if not csv_relative_path:
-            raise ValueError("meta.jsonにcsv_pathが見つかりません")
+        self.search_engine = SearchEngine(self.embeddings_dir)
         
-        # embeddings_dirの親ディレクトリからの相対パスを絶対パスに変換
-        embeddings_parent = self.embeddings_dir.parent
-        csv_absolute_path = embeddings_parent / csv_relative_path
-        return str(csv_absolute_path.resolve())
+        # SearchEngineからモデル名を取得
+        model_name = self.search_engine.get_model_name()
+        
+        super().__init__(model_name)
     
     async def _init_model(self):
         """モデル初期化とSearchEngine初期化"""
@@ -179,14 +165,10 @@ async def main():
         metadata_path = embeddings_dir / "meta.json"
         
         try:
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                metadata = json.load(f)
-            model_name = metadata["model"]
-            
-            server = TwilogServer(args.embeddings_dir, metadata)
+            server = TwilogServer(args.embeddings_dir)
             await server.start_server()
-        except (FileNotFoundError, KeyError) as e:
-            print(f"メタデータファイルエラー: {e}")
+        except (FileNotFoundError, KeyError, RuntimeError, ValueError) as e:
+            print(f"サーバー起動エラー: {e}")
             return
     elif args.command == "start":
         # 起動処理

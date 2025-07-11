@@ -196,6 +196,9 @@ class EmbedServer(BaseEmbedServer):
     
     async def init_model(self):
         """初期化処理の時間計測"""
+        if not self.model_name:
+            raise ValueError("モデルが指定されていません")
+        
         total_start = time.monotonic()
         
         # サーバー種類を進捗として報告（クラス名）

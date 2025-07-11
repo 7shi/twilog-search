@@ -92,6 +92,11 @@
 
 **Solution**: TwilogServerを完全なSearchEngineラッパーに再設計し、コンストラクタでSearchEngineインスタンスを生成、`_init_model()`でSearchEngineの遅延初期化を実行する明確な分離を実現。TwilogServerはクエリのベクトル化のみを担当し、全ての検索処理はSearchEngineに委譲する設計とした。SearchEngineに遅延初期化パターンを導入することで、グローバルインポートが可能になり、インスタンス生成と初期化のタイミングを分離。これにより、embed_server基底クラスの段階的初期化と調和し、責務が明確で保守性の高いアーキテクチャを確立した。
 
+### コンストラクタの単純化とメタデータ管理の統一
+**Problem**: TwilogServerのコンストラクタでメタデータを外部から受け取る設計により、main関数での重複したメタデータ読み込み処理が発生し、責務の分離が不十分だった。また、`_load_csv_path()`など複雑な処理がTwilogServerに残存していた。
+
+**Solution**: TwilogServerのコンストラクタを`embeddings_dir`のみを受け取る単純な設計に変更。SearchEngineからモデル名を取得する`get_model_name()`メソッドを活用し、メタデータ読み込みをSearchEngine内部に統一。main関数でのメタデータ読み込み処理を削除し、CSV設定を含むすべての設定管理をSearchEngineに委譲。これにより、TwilogServerは純粋なWebSocketラッパーとなり、設定関連の複雑な処理を完全に分離した。
+
 ### vector_searchメソッドのStreaming Extensions統合
 **Problem**: SearchEngineの`vector_search`メソッドが返すチャンク配列をそのまま返すと、embed_serverの新しいStreaming Extensions判定条件（`streamingフィールドのみを含む辞書`）に適合せず、分割送信処理が実行されない問題があった。
 

@@ -11,19 +11,22 @@ from data_csv import TwilogDataAccess
 class SearchEngine:
     """Twilogベクトル検索クラス"""
     
-    def __init__(self, csv_path: str, embeddings_dir: str, metadata: dict):
+    def __init__(self, embeddings_dir: str):
         """
         初期化（遅延初期化対応）
         
         Args:
-            csv_path: データベースファイルのパス
             embeddings_dir: 埋め込みディレクトリのパス
-            metadata: メタデータ辞書
         """
         # パラメータを保存（初期化は後で行う）
-        self.csv_path = csv_path
         self.embeddings_dir = Path(embeddings_dir)
-        self.metadata = metadata
+        
+        # メタデータを読み込み
+        metadata_path = self.embeddings_dir / "meta.json"
+        self.metadata = self._load_metadata(metadata_path)
+        
+        # CSVパスを取得
+        self.csv_path = self._load_csv_path()
         
         # 初期化フラグ
         self.initialized = False
@@ -35,19 +38,42 @@ class SearchEngine:
         self.post_ids: List[int] = []
         self.vectors: Optional[Any] = None
     
+    def _load_metadata(self, metadata_path: Path) -> dict:
+        """メタデータファイルを読み込む"""
+        import json
+        try:
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                return json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"メタデータファイルの読み込みに失敗しました: {e}")
+    
+    def get_model_name(self) -> str:
+        """モデル名を取得"""
+        return self.metadata.get("model", "")
+    
+    def _load_csv_path(self) -> str:
+        """meta.jsonからCSVパスを取得し、絶対パスに変換"""
+        csv_relative_path = self.metadata.get("csv_path")
+        if not csv_relative_path:
+            return ""
+        
+        # embeddings_dirの親ディレクトリからの相対パスを絶対パスに変換
+        embeddings_parent = self.embeddings_dir.parent
+        csv_absolute_path = embeddings_parent / csv_relative_path
+        return str(csv_absolute_path.resolve())
+    
     def initialize(self) -> None:
         """実際の初期化処理を実行"""
         if self.initialized:
             return
         
         # データアクセス層の初期化
+        if not self.csv_path:
+            raise ValueError("meta.jsonにcsv_pathが見つかりません")
         self.data_access = TwilogDataAccess(self.csv_path)
         
         # ユーザー情報の読み込み
         self.post_user_map, self.user_post_counts = self.data_access.load_user_data()
-        
-        # embeddings読み込み
-        self._load_embeddings()
         
         # 初期化完了フラグ
         self.initialized = True
@@ -154,6 +180,10 @@ class SearchEngine:
         Returns:
             チャンク形式の検索結果
         """
+        # embeddings遅延読み込み
+        if self.vectors is None:
+            self._load_embeddings()
+        
         if self.vectors is None or len(self.vectors) == 0:
             # 空結果の場合もチャンク形式で返却
             return [{
