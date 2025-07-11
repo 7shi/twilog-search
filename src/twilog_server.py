@@ -93,6 +93,10 @@ class TwilogServer(EmbedServer):
         """ユーザー統計を取得"""
         limit = params.get("limit", 50) if params else 50
         
+        # limitのバリデーション
+        if limit < 1 or limit > 1000:
+            raise ValueError(f"limit must be between 1 and 1000, got {limit}")
+        
         # SearchEngineに委譲
         return self.search_engine.get_user_stats(limit)
     
@@ -108,6 +112,10 @@ class TwilogServer(EmbedServer):
             raise ValueError("Invalid params: search_term is required")
         
         limit = params.get("limit", 50) if params else 50
+        
+        # limitのバリデーション
+        if limit < 1 or limit > 1000:
+            raise ValueError(f"limit must be between 1 and 1000, got {limit}")
         
         # SearchEngineに委譲
         return self.search_engine.search_posts_by_text(search_term, limit)
