@@ -86,7 +86,13 @@ class TwilogDataAccess:
                     url = row[1].strip('"')
                     timestamp = row[2].strip('"')
                     content = html.unescape(row[3].strip('"'))
-                    log_type = row[4].strip('"')
+                    log_type = int(row[4].strip('"'))
+                    
+                    # 既存のpost_idがある場合、log_typeが大きい場合のみ上書き
+                    if post_id in self.posts_data:
+                        existing_log_type = self.posts_data[post_id]['log_type']
+                        if log_type <= existing_log_type:
+                            continue
                     
                     self.posts_data[post_id] = {
                         'url': url,
@@ -120,11 +126,8 @@ class TwilogDataAccess:
         self.post_user_map = {}
         self.user_post_counts = {}
         
-        results = {}  # post_id -> (user, post_id, log_type)
-        
         for post_id, post_data in self.posts_data.items():
             url = post_data['url']
-            log_type = int(post_data['log_type'])
             
             if url:
                 result = self._extract_user_and_post_id(url)
@@ -133,18 +136,8 @@ class TwilogDataAccess:
                     
                     # post_idの一致を確認
                     if str(post_id) == extracted_post_id:
-                        # 既存のpost_idがある場合、log_typeが大きい場合のみ上書き
-                        if post_id in results:
-                            existing_user, existing_post_id, existing_log_type = results[post_id]
-                            if log_type > existing_log_type:
-                                results[post_id] = (user, post_id, log_type)
-                        else:
-                            results[post_id] = (user, post_id, log_type)
-        
-        # post_user_mapとuser_post_countsを構築
-        for user, post_id, log_type in results.values():
-            self.post_user_map[post_id] = user
-            self.user_post_counts[user] = self.user_post_counts.get(user, 0) + 1
+                        self.post_user_map[post_id] = user
+                        self.user_post_counts[user] = self.user_post_counts.get(user, 0) + 1
     
     def load_user_data(self) -> Tuple[Dict[int, str], Dict[str, int]]:
         """
