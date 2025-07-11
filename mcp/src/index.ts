@@ -77,7 +77,7 @@ class TwilogMCPServer {
                   type: 'integer',
                   description: '表示件数制限（省略時は10件検索）',
                   minimum: 1,
-                  maximum: 1000,
+                  maximum: 100,
                 },
                 user_filter: {
                   type: 'object',
