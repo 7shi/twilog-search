@@ -57,3 +57,13 @@
 **Problem**: UserFilterSettingsがuser_post_countsを内部保持していたため、設定クラスが大量のユーザーデータを抱え込み、設定のシリアライズ時に不要なデータ転送が発生していた。また、同じユーザーデータが設定クラスとSearchEngineで重複保持される問題があった。
 
 **Solution**: user_post_countsをUserFilterSettingsから分離し、is_user_allowed()メソッドの引数として渡す設計に変更。SearchEngineがself.user_post_countsとして一元管理し、フィルタリング時にis_user_allowed(user, self.user_post_counts)として引数で提供する方式を採用。これにより、ユーザーデータの重複保持を解消し、設定クラスは純粋な設定値のみを管理する軽量な設計を実現した。必要時のみデータを参照する効率的なアーキテクチャとなった。
+
+### TwilogServerからの機能統合
+**Problem**: TwilogServerに検索機能、統計機能、embeddings管理が混在し、責務が不明確になっていた。また、EmbedServerの段階的初期化にsearch_engine.pyのインポートが影響していた。
+
+**Solution**: SearchEngineにembeddings管理、ベクトル検索、統計取得、テキスト検索の全機能を統合し、TwilogServerはクエリのベクトル化のみを担当するシンプルなラッパーとして再設計した。search_engine.pyのインポートを関数レベルに移すことで、重いライブラリの段階的読み込みを保護し、SearchEngineの初期化を遅延させつつ、内部は責務を明確にしたフラットな構造とした。これにより、単一責任原則に従い、保守性と拡張性を向上させた。
+
+### 遅延初期化アーキテクチャの採用
+**Problem**: SearchEngineのコンストラクタでCSV読み込みとembeddings読み込みが即座に実行され、インスタンス生成時に大量のメモリと時間を消費していた。これにより、TwilogServerでの関数レベルインポートが必要になり、アーキテクチャが複雑化していた。
+
+**Solution**: SearchEngineに遅延初期化パターンを導入し、コンストラクタではパラメータ保存のみを行い、実際のCSV・embeddings読み込みは`initialize()`メソッドで実行する設計に変更。`initialized`フラグで初期化状態を管理し、重い処理は明示的な初期化呼び出しまで延期。これにより、TwilogServerでのグローバルインポートが可能になり、インスタンス生成の軽量化と初期化タイミングの制御を両立した明確なアーキテクチャを実現した。
