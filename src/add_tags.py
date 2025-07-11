@@ -1,17 +1,18 @@
 #!/usr/bin/env python3
 """
-CSVファイルからタグを抽出し、JSONファイルに保存するスクリプト
+CSVファイルのデータにタグを付けて、分割JSONLファイルに保存するスクリプト
 """
 
 import argparse
 import json
+from datetime import datetime
 from pathlib import Path
 from typing import List
 from pydantic import BaseModel, Field
-from llm7shi.compat import generate_with_schema
-from llm7shi import create_json_descriptions_prompt
 from tqdm import tqdm
 from data_csv import TwilogDataAccess, strip_content
+from llm7shi.compat import generate_with_schema
+from llm7shi import create_json_descriptions_prompt
 
 class TweetTagAnalysisSchema(BaseModel):
     reasoning: str = Field(description="内容についての検討")
@@ -48,70 +49,25 @@ def analyze_content_with_llm(content: str, model: str = "ollama:qwen3:4b") -> di
         print(f"LLM分析でエラーが発生しました: {e}")
         return None
 
-def load_processed_content(csv_path: str, limit: int = None, offset: int = 0) -> list:
+def load_data_from_csv(csv_path):
     """
-    CSVファイルからデータを読み込み、前処理済みコンテンツを生成する
+    CSVファイルからデータを読み込む
     
     Args:
         csv_path: CSVファイルのパス
-        limit: 取得する件数の上限
-        offset: 取得開始位置
         
     Returns:
-        (post_id, processed_content)のリスト
+        (post_id, content)のリスト
     """
     data_access = TwilogDataAccess(csv_path)
     
-    # 全投稿IDを取得
-    all_post_ids = sorted(data_access.posts_data.keys())
-    
-    # offset/limitの適用
-    if offset > 0:
-        all_post_ids = all_post_ids[offset:]
-    if limit is not None:
-        all_post_ids = all_post_ids[:limit]
-    
-    # 投稿データを取得して前処理
-    result = []
-    for post_id in all_post_ids:
-        post_data = data_access.posts_data[post_id]
-        content = post_data['content']
-        
-        # 前処理を適用（URL・メンション除去、ハッシュタグ保持）
-        processed_content = strip_content(content)
-        
-        # 空文字でない場合のみ結果に追加
-        if processed_content.strip():
-            result.append((post_id, processed_content))
-    
-    return result
-
-def get_processed_post_ids(output_dir: Path) -> set:
-    """
-    既存のJSONLファイルから処理済みpost_idのセットを取得する
-    
-    Args:
-        output_dir: 出力ディレクトリのパス
-        
-    Returns:
-        処理済みpost_idのセット
-    """
-    if not output_dir.exists():
-        return set()
-    
-    processed_ids = set()
-    try:
-        # tags/ディレクトリ内の全*.jsonlファイルを処理
-        for jsonl_file in output_dir.glob('*.jsonl'):
-            with open(jsonl_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.strip():
-                        data = json.loads(line)
-                        processed_ids.add(data['post_id'])
-        return processed_ids
-    except Exception as e:
-        print(f"既存ファイル読み込みエラー: {e}")
-        return set()
+    # 全投稿データを取得
+    data = []
+    for post_id, post_data in tqdm(data_access.posts_data.items(), desc="データ確認"):
+        content = strip_content(post_data['content'])
+        if content:  # 空でない場合のみ追加
+            data.append((post_id, content))
+    return data
 
 def save_tag_record(record: dict, output_dir: Path, file_index: int) -> None:
     """
@@ -130,13 +86,61 @@ def save_tag_record(record: dict, output_dir: Path, file_index: int) -> None:
     except Exception as e:
         print(f"保存エラー: {e}")
 
-def add_tags_from_csv(
-    csv_path: str,
-    output_dir: str,
-    model: str = "ollama:qwen3:4b",
-    limit: int = None,
-    resume: bool = True
-) -> None:
+def get_target_file_index(file_counts: dict, chunk_size: int) -> int:
+    """
+    保存対象のファイルインデックスを決定する
+    
+    Args:
+        file_counts: {file_index: 行数}の辞書
+        chunk_size: チャンクサイズ
+        
+    Returns:
+        保存対象のファイルインデックス
+    """
+    if not file_counts:
+        return 0
+    
+    # 0から順番に確認し、chunk_size未満のファイルがあればそれを使用
+    max_index = max(file_counts.keys())
+    for i in range(max_index + 1):
+        if i in file_counts:
+            if file_counts[i] < chunk_size:
+                return i
+        else:
+            # 中間が抜けている場合、その番号を使用
+            return i
+    
+    # すべてのファイルがchunk_size以上なら次のインデックス
+    return max_index + 1
+
+def create_metadata(total_posts, chunk_size, output_dir, csv_path):
+    """
+    メタデータファイルを作成する
+    
+    Args:
+        total_posts: 総投稿数
+        chunk_size: チャンクサイズ
+        output_dir: 出力ディレクトリ
+        csv_path: CSVファイルのパス
+    """
+    import os
+    
+    chunks = (total_posts + chunk_size - 1) // chunk_size
+    
+    # CSVファイルのパスをoutput_dirの親ディレクトリからの相対パスに変換
+    csv_relative_path = os.path.relpath(csv_path, output_dir.parent)
+    
+    metadata = {
+        "total_posts": total_posts,
+        "chunk_size": chunk_size,
+        "chunks": chunks,
+        "csv_path": csv_relative_path
+    }
+    
+    with open(output_dir / "meta.json", "w", encoding="utf-8") as f:
+        json.dump(metadata, f, ensure_ascii=False, indent=2)
+
+def add_tags_from_csv(csv_path, output_dir, model="ollama:qwen3:4b", chunk_size=1000, limit=None):
     """
     CSVファイルからタグを抽出してJSONLファイルに保存する
     
@@ -144,42 +148,73 @@ def add_tags_from_csv(
         csv_path: CSVファイルのパス
         output_dir: 出力ディレクトリのパス
         model: 使用するLLMモデル
+        chunk_size: チャンクサイズ
         limit: 処理する件数の上限
-        resume: 中断・再開機能を使用するか
     """
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
     
-    # 既存データの確認
-    existing_post_ids = get_processed_post_ids(output_path) if resume else set()
-    if existing_post_ids:
-        print(f"既存データ: {len(existing_post_ids)}件をスキップ")
-    
-    # データ読み込み（既存件数を考慮してLIMITを調整）
-    print("CSVファイルからデータを読み込み中...")
-    adjusted_limit = None
-    if limit is not None:
-        adjusted_limit = limit + len(existing_post_ids)
-    
-    data = load_processed_content(csv_path, adjusted_limit)
+    # データ読み込み
+    data = load_data_from_csv(csv_path)
     total_posts = len(data)
-    print(f"読込件数: {total_posts}")
+    all_post_ids = set(post_id for post_id, _ in data)
+    print(f"総投稿数: {total_posts}")
     
-    # 未処理データのフィルタリング
-    if resume:
-        data = [(post_id, content) for post_id, content in data 
-                if post_id not in existing_post_ids]
-        print(f"未処理データ: {len(data)}件")
+    # 既存のJSONLファイルからpost_idを収集し、ファイルごとの行数を記録
+    processed_post_ids = set()
+    file_counts = {}  # {file_index: 行数}
+    if output_path.exists():
+        files = sorted(output_path.glob("*.jsonl"))
+        for jsonl_file in tqdm(files, desc="既存確認"):
+            try:
+                # ファイル名からインデックスを抽出
+                file_index = int(jsonl_file.stem)
+                line_count = 0
+                
+                with open(jsonl_file, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        if line.strip():
+                            line_count += 1
+                            record = json.loads(line)
+                            post_id = record['post_id']
+                            # 重複チェック
+                            if post_id in processed_post_ids:
+                                print(f"\nエラー: post_idに重複があります: {post_id}")
+                                print(f"ファイル: {jsonl_file}")
+                                return
+                            processed_post_ids.add(post_id)
+                
+                file_counts[file_index] = line_count
+            except Exception as e:
+                print(f"警告: {jsonl_file}の読み込みに失敗: {e}")
     
-    if not data:
-        print("処理対象のデータがありません")
+    # 変換済み・残りpost_id数を表示
+    remaining_post_ids = all_post_ids - processed_post_ids
+    print(f"変換済み: {len(processed_post_ids)}件")
+    print(f"残り: {len(remaining_post_ids)}件")
+    
+    # 全件完了していれば終了
+    if not remaining_post_ids:
+        print("すべてのpost_idが変換済みです")
         return
+    
+    # 残りのpost_idのみを対象に変換
+    remaining_data = [(post_id, content) for post_id, content in data if post_id in remaining_post_ids]
+    
+    # post_idでソート
+    remaining_data.sort(key=lambda x: x[0])
+    
+    # limit制限の適用
+    if limit is not None and len(remaining_data) > limit:
+        remaining_data = remaining_data[:limit]
+        print(f"limit制限により{limit}件に制限されました")
     
     # 1件ずつ処理・保存
     processed_count = 0
-    total_processed = len(existing_post_ids)  # 既存処理件数を含む
+    current_file_index = get_target_file_index(file_counts, chunk_size)
+    current_file_count = file_counts.get(current_file_index, 0)
     
-    for post_id, content in tqdm(data, desc="タグ付け中"):
+    for post_id, content in tqdm(remaining_data, desc="タグ付け中"):
         # LLMで分析
         analysis = analyze_content_with_llm(content, model)
         
@@ -192,39 +227,54 @@ def add_tags_from_csv(
                 'tags': analysis.get('tags', [])
             }
             
-            # ファイルインデックスを計算（1000件ごと）
-            file_index = total_processed // 1000
-            
             # 1件ずつ追記保存
-            save_tag_record(record, output_path, file_index)
+            save_tag_record(record, output_path, current_file_index)
             processed_count += 1
-            total_processed += 1
+            current_file_count += 1
+            
+            # ファイルがchunk_sizeに達したら次のファイルに移行
+            if current_file_count >= chunk_size:
+                file_counts[current_file_index] = current_file_count
+                current_file_index = get_target_file_index(file_counts, chunk_size)
+                current_file_count = file_counts.get(current_file_index, 0)
         else:
             print(f"分析に失敗しました: post_id={post_id}")
     
     print(f"タグ付け完了: {processed_count}件を処理しました")
+    
+    # メタデータ作成
+    create_metadata(total_posts, chunk_size, output_path, csv_path)
+    print(f"出力先: {output_dir}")
 
 def main():
     """メイン関数"""
     parser = argparse.ArgumentParser(
-        description="CSVファイルからタグを抽出してJSONファイルに保存"
+        description="CSVファイルからタグを抽出してJSONLファイルに保存"
     )
     
-    parser.add_argument("csv_file", help="CSVファイルのパス（デフォルト: twilog.csv）", nargs='?', default="twilog.csv")
-    parser.add_argument("--output", default="tags", help="出力ディレクトリのパス（デフォルト: tags）")
+    parser.add_argument("csv_file", help="CSVファイルのパス")
+    parser.add_argument("--output-dir", default="tags", help="出力ディレクトリ（デフォルト: tags）")
     parser.add_argument("--model", default="ollama:qwen3:4b", help="使用するLLMモデル（デフォルト: ollama:qwen3:4b）")
+    parser.add_argument("--chunk-size", type=int, default=1000, help="チャンクサイズ（デフォルト: 1000）")
     parser.add_argument("--limit", type=int, help="処理する件数の上限")
-    parser.add_argument("--no-resume", action="store_true", help="中断・再開機能を無効にする")
     
     args = parser.parse_args()
     
+    start_time = datetime.now()
+    print("タグ付け開始:", start_time)
+    
     add_tags_from_csv(
         args.csv_file,
-        args.output,
+        args.output_dir,
         args.model,
-        args.limit,
-        not args.no_resume
+        args.chunk_size,
+        args.limit
     )
+    
+    end_time = datetime.now()
+    elapsed = end_time - start_time
+    print("タグ付け完了:", end_time)
+    print(f"所要時間: {elapsed} ({elapsed.total_seconds():.2f}秒)")
 
 if __name__ == "__main__":
     main()
