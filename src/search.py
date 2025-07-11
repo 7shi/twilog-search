@@ -122,7 +122,10 @@ def main():
         console = Console()
         rank_width = len(str(10))  # デフォルト10件表示
         
-        for rank, similarity, post_info in results:
+        for result in results:
+            rank = result.get('rank', 0)
+            similarity = result.get('score', 0.0)
+            post_info = result.get('post', {})
             user = post_info.get('user', 'unknown')
             
             # ヘッダー情報（色付き）
