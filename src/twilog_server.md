@@ -76,3 +76,13 @@
 **Problem**: MCPサーバーで独自実装されていたメソッド群（search_similar、get_user_stats等）がtwilog_server.pyに存在せず、MCPサーバー側で複雑な処理を重複実装する必要があった。また、メソッド名の不整合により、API設計の一貫性が損なわれていた。
 
 **Solution**: MCPサーバーで提供されていたメソッド名と同一のAPIをtwilog_server.pyに実装。search_similar（ベクトル検索+フィルタリング）、get_user_stats（ユーザー統計）、get_database_stats（データベース統計）、search_posts_by_text（テキスト検索）を追加し、SearchEngineとの連携により実装。これにより、MCPサーバーは単純なWebSocketラッパーとなり、処理ロジックの重複を解消。統一されたAPI設計により、CLI・MCP両方で同じメソッド名と処理結果を提供する一貫性を確保した。
+
+### SearchSettings統合による設定管理の統一化
+**Problem**: SearchEngineが状態を持つ設計により、複数クライアントからの同時アクセス時に設定が競合する問題があった。また、フィルタリング設定の受け渡しが複雑で、設定項目の追加時に複数箇所の修正が必要だった。
+
+**Solution**: SearchSettingsクラスによる統合設定管理を実装。search_similarメソッドでsearch_settingsパラメータを受け取り、SearchSettings.from_dict()でデシリアライズしてSearchEngineに渡す設計を採用。user_post_countsは受信時にサーバー側で自動補完し、クライアント側の送信負荷を軽減。SearchEngineをステートレスに変更し、各リクエストで独立した設定を使用することで、並行アクセス時の競合を解消した。
+
+### 軽量設定処理による通信効率の最適化
+**Problem**: 初期の実装では、SearchSettingsにuser_post_countsが含まれていたため、クライアントから大量のユーザーデータが毎回送信され、サーバー側でも受信したuser_post_countsを既存のself.search_engine.user_post_countsに上書き設定する複雑な処理が必要だった。
+
+**Solution**: user_post_countsをSearchSettingsから完全分離し、サーバー側での処理を大幅簡素化。search_similarメソッドでuser_post_countsの自動補完処理を削除し、SearchSettings.from_dict()では純粋な設定値のみをデシリアライズする軽量な処理に変更。SearchEngineのsearch()メソッドでは、self.user_post_countsを引数として直接渡すことで、データの重複保持と不要な通信を排除。これにより、サーバー側の処理負荷とメモリ使用量を削減し、より効率的な設定管理アーキテクチャを実現した。

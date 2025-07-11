@@ -138,6 +138,42 @@ JSON-RPC 2.0をベースとした統一APIにより、他のクライアント�
 ### 保守性の確保
 重複コードの削除により、長期的な保守コストを大幅に削減し、システムの安定性を向上
 
+## SearchSettings統合による設定管理の革新
+
+### ステートレス設計への移行
+**Problem**: SearchEngineがインスタンス変数として設定を保持していたため、複数クライアントからの同時アクセス時に設定が競合する問題が発生
+**Solution**: SearchEngineから状態保持を完全削除し、search()メソッドの引数でSearchSettingsを受け取るステートレス設計に変更
+
+### 設定クラスの統合管理
+```python
+# 新しいSearchSettingsクラス
+class SearchSettings:
+    def __init__(self, user_post_counts: Dict[str, int] = None, initial_top_k: int = 10):
+        self.user_filter = UserFilterSettings(user_post_counts or {})
+        self.date_filter = DateFilterSettings()
+        self.top_k = TopKSettings(initial_top_k)
+        self.remove_duplicates = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        # シリアライズ機能
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SearchSettings':
+        # デシリアライズ機能
+```
+
+### 設定管理のデータフロー
+```
+[CLI] → SearchSettings → to_dict() → WebSocket → from_dict() → SearchEngine
+[MCP] → SearchSettings → to_dict() → WebSocket → from_dict() → SearchEngine
+```
+
+### 実装の効果
+- **並行性**: 複数クライアントの同時アクセス時の設定競合を解消
+- **原子性**: 設定と検索の原子性を保証
+- **拡張性**: 新しい設定項目の追加はSearchSettingsクラスの修正のみで対応
+- **フィルタリング復活**: `/user`、`/date`、`/top`コマンドによる対話的設定変更を完全復活
+
 ## 結論
 
 今回のMCPアーキテクチャ統合により、twilog-searchプロジェクトは以下の状態を達成：
@@ -145,5 +181,6 @@ JSON-RPC 2.0をベースとした統一APIにより、他のクライアント�
 1. **技術的一貫性**: CSVベース統一とSearchEngine中心のアーキテクチャ
 2. **運用の簡素化**: 単一データフローによる管理負荷削減
 3. **拡張性の確保**: 統一APIによる新機能追加の効率化
+4. **ステートレス設計**: SearchSettings統合による並行アクセス対応と設定管理の統一化
 
-この統合は、20250710-sqlite-to-csv.mdで示されたCSVベース移行の完成形として位置づけられ、プロジェクト全体のアーキテクチャ簡素化を完遂した重要なマイルストーンである。
+この統合は、20250710-sqlite-to-csv.mdで示されたCSVベース移行の完成形として位置づけられ、SearchSettings統合によってプロジェクト全体のアーキテクチャ簡素化と堅牢性向上を完遂した重要なマイルストーンである。

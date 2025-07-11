@@ -36,8 +36,8 @@ uv run src/search.py
 - **入力**: twilog.csv + twilog_server.py（WebSocket通信）
 - **機能**: 意味的検索による投稿発見（リモート検索）
 - **表示**: ランク・類似度・ユーザー・日時・URL・内容
-- **特徴**: 対話的検索インターフェース（フィルタリング機能は一時無効化）
-- **コマンド**: `/help`でヘルプ（ユーザー・日付・表示件数設定は現在利用不可）
+- **特徴**: 対話的検索インターフェース（フィルタリング機能復活済み）
+- **コマンド**: `/help`でヘルプ、`/user`でユーザーフィルタリング、`/date`で日付フィルタリング、`/top`で表示件数設定
 - **起動時間**: 数秒（軽量クライアント）
 - **アーキテクチャ**: twilog_server.pyのsearch_similarメソッド使用
 
@@ -96,10 +96,11 @@ embeddings/ (226個の.safetensorsファイル + meta.json)
 
 ### 主要コンポーネント
 
-- **search.py**: 軽量検索フロントエンド（表示のみ特化）
-- **search_engine.py**: フィルタリング・重複除去の中核（twilog_server.pyで統合使用）
+- **search.py**: 軽量検索フロントエンド（設定管理＋表示特化）
+- **search_engine.py**: フィルタリング・重複除去の中核（ステートレス設計、twilog_server.pyで統合使用）
+- **settings.py**: 統合設定管理（SearchSettings、シリアライズ対応）
 - **data_csv.py**: CSVベースデータアクセス層
-- **twilog_client.py**: WebSocket通信クライアント
+- **twilog_client.py**: WebSocket通信クライアント（SearchSettings対応）
 - **safe_input.py**: 安全な入力処理（日本語対応）
-- **twilog_server.py**: 統合WebSocketサーバー（ベクトル検索 + SearchEngine + MCP互換メソッド）
+- **twilog_server.py**: 統合WebSocketサーバー（ベクトル検索 + SearchEngine + MCP互換メソッド + 設定デシリアライズ）
 - **mcp_wrap.py**: MCPプロトコル対話的クライアント

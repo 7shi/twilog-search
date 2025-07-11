@@ -10,14 +10,8 @@ from typing import Optional, List, Dict, Any
 class UserFilterSettings:
     """ユーザーフィルタリング設定クラス"""
     
-    def __init__(self, user_post_counts: Dict[str, int]):
-        """
-        初期化
-        
-        Args:
-            user_post_counts: ユーザーごとの投稿数辞書
-        """
-        self.user_post_counts = user_post_counts
+    def __init__(self):
+        """初期化"""
         self.filter_settings = {}
     
     def set_none(self):
@@ -123,7 +117,7 @@ class UserFilterSettings:
         
         return " + ".join(status_parts) if status_parts else "unknown"
     
-    def is_user_allowed(self, user: str) -> bool:
+    def is_user_allowed(self, user: str, user_post_counts: Dict[str, int]) -> bool:
         """ユーザーがフィルタリング条件を満たすかチェック"""
         if not self.filter_settings:
             return True
@@ -137,7 +131,7 @@ class UserFilterSettings:
                 return False
         
         # threshold系のチェック（組み合わせ可能）
-        post_count = self.user_post_counts.get(user, 0)
+        post_count = user_post_counts.get(user, 0)
         
         if "threshold_min" in self.filter_settings:
             if post_count < self.filter_settings["threshold_min"]:
@@ -269,3 +263,58 @@ class TopKSettings:
     def get_top_k(self) -> int:
         """表示件数を取得"""
         return self.top_k
+
+
+class SearchSettings:
+    """検索設定を統合管理するクラス"""
+    
+    def __init__(self, initial_top_k: int = 10):
+        """
+        初期化
+        
+        Args:
+            initial_top_k: 初期表示件数
+        """
+        self.user_filter = UserFilterSettings()
+        self.date_filter = DateFilterSettings()
+        self.top_k = TopKSettings(initial_top_k)
+        self.remove_duplicates = True
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """設定をDict形式にシリアライズ"""
+        return {
+            "user_filter": self.user_filter.filter_settings,
+            "date_filter": self.date_filter.filter_settings,
+            "top_k": self.top_k.get_top_k(),
+            "remove_duplicates": self.remove_duplicates
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'SearchSettings':
+        """Dict形式から設定をデシリアライズ"""
+        initial_top_k = data.get("top_k", 10)
+        
+        # インスタンス作成
+        settings = cls(initial_top_k)
+        
+        # user_filterの設定を復元
+        if "user_filter" in data:
+            settings.user_filter.filter_settings = data["user_filter"]
+        
+        # date_filterの設定を復元
+        if "date_filter" in data:
+            settings.date_filter.filter_settings = data["date_filter"]
+        
+        # remove_duplicatesの設定を復元
+        if "remove_duplicates" in data:
+            settings.remove_duplicates = data["remove_duplicates"]
+        
+        return settings
+    
+    def set_remove_duplicates(self, remove_duplicates: bool):
+        """重複除去設定を更新"""
+        self.remove_duplicates = remove_duplicates
+    
+    def get_remove_duplicates(self) -> bool:
+        """重複除去設定を取得"""
+        return self.remove_duplicates

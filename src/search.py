@@ -9,6 +9,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k_menu
+from settings import SearchSettings
 from twilog_client import TwilogClient
 from safe_input import safe_text_input
 
@@ -62,6 +63,9 @@ def main():
         print(f"WebSocketサーバー接続失敗: {e}")
         print("WebSocketサーバーが利用できません。twilog_server.py start でデーモンを起動してください。")
         sys.exit(1)
+    
+    # 検索設定の初期化
+    search_settings = SearchSettings()
 
     print(f"リモート検索システム準備完了")
     print("検索クエリを入力してください")
@@ -87,13 +91,13 @@ def main():
                 show_help()
                 continue
             elif command == "user":
-                print("ユーザーフィルタリング機能は現在利用できません")
+                show_user_filter_menu(search_settings.user_filter)
                 continue
             elif command == "date":
-                print("日付フィルタリング機能は現在利用できません")
+                show_date_filter_menu(search_settings.date_filter)
                 continue
             elif command == "top":
-                print("表示件数設定機能は現在利用できません")
+                show_top_k_menu(search_settings.top_k)
                 continue
             elif command in ["exit", "quit", "q"]:
                 print("プログラムを終了します")
@@ -105,7 +109,7 @@ def main():
         
         # 検索実行
         try:
-            results = asyncio.run(client.search_similar(query))
+            results = asyncio.run(client.search_similar(query, search_settings))
         except Exception as e:
             print(f"検索エラー: {e}")
             continue

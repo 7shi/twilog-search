@@ -16,6 +16,7 @@ import argparse
 from typing import Dict, Optional
 from urllib.parse import urlparse
 from embed_client import EmbedClient, EmbedCommand
+from settings import SearchSettings
 
 
 class TwilogClient(EmbedClient):
@@ -65,12 +66,13 @@ class TwilogClient(EmbedClient):
         first["data"] = data
         return first
     
-    async def search_similar(self, query_text: str, top_k: Optional[int] = None) -> list:
+    async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None, top_k: Optional[int] = None) -> list:
         """
         類似検索を実行（フィルタリング付き）
         
         Args:
             query_text: 検索クエリ
+            search_settings: 検索設定
             top_k: 取得件数制限（デフォルト: 10）
             
         Returns:
@@ -82,6 +84,8 @@ class TwilogClient(EmbedClient):
         params = {"query": query_text}
         if top_k is not None:
             params["top_k"] = top_k
+        if search_settings is not None:
+            params["search_settings"] = search_settings.to_dict()
         return await self._send_request("search_similar", params)
     
     async def get_user_stats(self, limit: Optional[int] = None) -> list:

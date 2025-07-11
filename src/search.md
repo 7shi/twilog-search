@@ -57,3 +57,18 @@
 **Problem**: SearchEngineの分離後も、search.pyでSearchEngineインスタンスを直接管理していたため、CSVファイルの読み込みやフィルタリング処理がクライアント側に残存し、サーバー・クライアント分離が不完全だった。また、MCPサーバーでも同様のフィルタリング処理が重複実装されており、機能の一元化ができていなかった。
 
 **Solution**: search.pyからSearchEngineのインポートと管理を完全に削除し、twilog_server.pyのsearch_similarメソッドを使用する純粋なフロントエンドに変更。フィルタリング処理はサーバー側（twilog_server.py + SearchEngine）に一元化し、search.pyはWebSocket通信と結果表示のみに特化。これにより、検索ロジックの重複を解消し、機能変更時の修正箇所を単一化。CSVファイルパス引数も削除し、設定情報もサーバー側で管理する完全分離アーキテクチャを実現した。
+
+### SearchSettings統合による設定管理の統一化
+**Problem**: SearchEngineが状態を持つ設計により、複数クライアントからの同時アクセス時に設定が競合する問題があった。また、設定の変更と検索実行が分離していたため、意図しない設定で検索が実行される可能性があった。
+
+**Solution**: SearchEngineをステートレスに再設計し、search()メソッドの引数でSearchSettingsを受け取る方式に変更。SearchSettingsクラスで3つの設定クラス（UserFilterSettings、DateFilterSettings、TopKSettings）を統合管理し、to_dict()/from_dict()によるシリアライズ機能を実装。search.pyではローカル変数として設定を管理し、TwilogClientが設定をシリアライズしてサーバーに送信、TwilogServerがデシリアライズしてSearchEngineに渡す仕組みを構築。これにより、設定と検索の原子性を保証し、並行アクセスでの競合を解消した。
+
+### ユーザー統計情報による設定機能の復活
+**Problem**: SearchSettingsがuser_post_countsを必要とするため、初期化時にサーバーからユーザー統計情報を取得する必要があった。また、取得失敗時の適切なエラーハンドリングが必要だった。
+
+**Solution**: WebSocket接続確認後にget_user_stats()でユーザー統計情報を取得し、SearchSettingsの初期化に使用する設計を採用。取得失敗時は即座にエラー終了し、不完全な状態での起動を防止。これにより、フィルタリング機能（/user、/date、/top コマンド）を完全復活させ、対話的な設定変更を可能にした。
+
+### 軽量な設定管理による起動プロセスの簡素化
+**Problem**: 前の実装ではSearchSettingsがuser_post_countsを内部保持していたため、クライアント側でユーザー統計情報を取得してSearchSettingsに渡す必要があり、起動プロセスが複雑化していた。また、大量のユーザーデータがクライアント側に保持され、メモリ使用量とネットワーク通信量が増加していた。
+
+**Solution**: user_post_countsをSearchSettingsから分離し、サーバー側（SearchEngine）でのみ管理する設計に変更。クライアント側ではユーザー統計情報の取得処理を完全削除し、SearchSettingsは純粋な設定値のみを管理するようになった。これにより、search.pyの起動プロセスが大幅に簡素化され、WebSocket接続確認後に即座に検索可能な状態になる軽量なクライアントを実現した。

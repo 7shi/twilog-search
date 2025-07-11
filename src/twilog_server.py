@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Optional, Any, List, Tuple
 from embed_server import EmbedServer, check_server_status, stop_server, start_daemon
 from search_engine import SearchEngine
+from settings import SearchSettings
 
 
 class TwilogServer(EmbedServer):
@@ -173,6 +174,13 @@ class TwilogServer(EmbedServer):
         if not query:
             raise ValueError("Invalid params: query is required")
         
+        # SearchSettingsを取得またはデフォルト設定作成
+        search_settings_dict = params.get("search_settings") if params else None
+        if search_settings_dict:
+            search_settings = SearchSettings.from_dict(search_settings_dict)
+        else:
+            search_settings = SearchSettings()
+        
         # ベクトル検索を実行
         vector_search_results = await self.vector_search(params)
         
@@ -183,9 +191,9 @@ class TwilogServer(EmbedServer):
         
         # SearchEngineでフィルタリング
         filtered_results = []
-        top_k = params.get("top_k", 10) if params else 10
+        top_k = search_settings.top_k.get_top_k()
         
-        for result in self.search_engine.search(all_results):
+        for result in self.search_engine.search(all_results, search_settings):
             filtered_results.append(result)
             if len(filtered_results) >= top_k:
                 break
