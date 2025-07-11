@@ -84,7 +84,7 @@ class TwilogServer(EmbedServer):
             raise ValueError("Invalid params: query is required")
         
         # SearchSettingsを取得またはデフォルト設定作成
-        search_settings_dict = params.get("search_settings") if params else None
+        search_settings_dict = params.get("settings") if params else None
         if search_settings_dict:
             search_settings = SearchSettings.from_dict(search_settings_dict)
         else:

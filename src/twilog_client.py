@@ -66,14 +66,13 @@ class TwilogClient(EmbedClient):
         first["data"] = data
         return first
     
-    async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None, top_k: Optional[int] = None) -> list:
+    async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None) -> list:
         """
         類似検索を実行（フィルタリング付き）
         
         Args:
             query_text: 検索クエリ
-            search_settings: 検索設定
-            top_k: 取得件数制限（デフォルト: 10）
+            search_settings: 検索設定（top_k含む）
             
         Returns:
             (rank, similarity, post_info)のタプルのリスト
@@ -82,10 +81,8 @@ class TwilogClient(EmbedClient):
             RuntimeError: サーバーエラーまたは通信エラー
         """
         params = {"query": query_text}
-        if top_k is not None:
-            params["top_k"] = top_k
         if search_settings is not None:
-            params["search_settings"] = search_settings.to_dict()
+            params["settings"] = search_settings.to_dict()
         return await self._send_request("search_similar", params)
     
     async def get_user_stats(self, limit: Optional[int] = None) -> list:
@@ -192,7 +189,10 @@ class TwilogCommand(EmbedCommand):
     
     async def search_similar(self, args) -> None:
         """search_similarコマンドの処理"""
-        results = await self.client.search_similar(args.query, args.top_k)
+        search_settings = None
+        if args.top_k is not None:
+            search_settings = SearchSettings(args.top_k)
+        results = await self.client.search_similar(args.query, search_settings)
         print(f"類似検索結果: {len(results)}件")
         for rank, similarity, post_info in results[:10]:
             user = post_info.get('user', 'unknown')

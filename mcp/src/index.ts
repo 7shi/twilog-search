@@ -74,12 +74,55 @@ class TwilogMCPServer {
                   description: '検索クエリ',
                 },
                 top_k: {
-                  type: 'number',
+                  type: 'integer',
                   description: '表示件数制限（省略時は10件検索）',
                   minimum: 1,
                   maximum: 1000,
                 },
-// フィルタリング機能はtwilog_server.pyで実装済み
+                user_filter: {
+                  type: 'object',
+                  description: 'ユーザーフィルタリング設定',
+                  properties: {
+                    includes: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: '含めるユーザー名のリスト',
+                    },
+                    excludes: {
+                      type: 'array',
+                      items: { type: 'string' },
+                      description: '除外するユーザー名のリスト',
+                    },
+                    threshold_min: {
+                      type: 'integer',
+                      description: '最小投稿数',
+                      minimum: 1,
+                    },
+                    threshold_max: {
+                      type: 'integer',
+                      description: '最大投稿数',
+                      minimum: 1,
+                    },
+                  },
+                },
+                date_filter: {
+                  type: 'object',
+                  description: '日付フィルタリング設定',
+                  properties: {
+                    from: {
+                      type: 'string',
+                      description: '開始日時（YYYY-MM-DD HH:MM:SS形式）',
+                    },
+                    to: {
+                      type: 'string',
+                      description: '終了日時（YYYY-MM-DD HH:MM:SS形式）',
+                    },
+                  },
+                },
+                remove_duplicates: {
+                  type: 'boolean',
+                  description: '重複除去設定',
+                },
               },
               required: ['query'],
             },
@@ -105,7 +148,7 @@ class TwilogMCPServer {
               type: 'object',
               properties: {
                 limit: {
-                  type: 'number',
+                  type: 'integer',
                   description: '取得件数制限',
                   minimum: 1,
                   maximum: 1000,
@@ -134,7 +177,7 @@ class TwilogMCPServer {
                   description: '検索文字列',
                 },
                 limit: {
-                  type: 'number',
+                  type: 'integer',
                   description: '表示件数制限',
                   minimum: 1,
                   maximum: 1000,
@@ -359,7 +402,7 @@ class TwilogMCPServer {
 
 
   private async handleTwilogSearch(args: any) {
-    const { query, top_k = 10 } = args;
+    const { query, top_k, user_filter, date_filter, remove_duplicates } = args;
     
     if (!query) {
       throw new Error('検索クエリが指定されていません');
@@ -367,10 +410,36 @@ class TwilogMCPServer {
 
     try {
       // twilog_server.pyのsearch_similarメソッドを直接呼び出し
+      const params: any = { query };
+      
+      // 個別のオプションをsettingsとしてまとめる
+      const settings: any = {};
+      
+      if (top_k !== undefined) {
+        settings.top_k = top_k;
+      }
+      
+      if (user_filter !== undefined) {
+        settings.user_filter = user_filter;
+      }
+      
+      if (date_filter !== undefined) {
+        settings.date_filter = date_filter;
+      }
+      
+      if (remove_duplicates !== undefined) {
+        settings.remove_duplicates = remove_duplicates;
+      }
+      
+      // settingsが空でない場合のみ追加
+      if (Object.keys(settings).length > 0) {
+        params.settings = settings;
+      }
+      
       const request = {
         jsonrpc: "2.0",
         method: "search_similar",
-        params: { query, top_k },
+        params: params,
         id: Date.now()
       };
       

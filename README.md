@@ -60,7 +60,9 @@ uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js
 - **MCPラッパー**: 対話的JSON-RPCクライアント（mcp_wrap.py）
 - **機能**: ツール一覧表示、YAML出力、ヘルプ機能（`/help <tool_name>`）
 - **対応ツール**: 類似検索、テキスト検索、統計情報取得、ベクトル化
+- **フィルタリング**: SearchSettings対応（ユーザー・日付フィルタリング）
 - **アーキテクチャ**: twilog_server.pyへの単純ラッパー（SQLite不要）
+- **詳細**: [MCP サーバー詳細](mcp/README.md)
 
 
 ## データフロー
@@ -99,6 +101,7 @@ embeddings/ (.safetensorsファイル + meta.json)
 - **処理方式**: 分割処理による安全性確保
 - **中断・再開**: vectorize.pyで対応
 - **統合アーキテクチャ**: SearchEngine中心の一元化（MCP/CLI統一）
+- **設定管理**: SearchSettings（ユーザー・日付フィルタリング、表示件数、重複除去）
 
 ## 依存関係
 

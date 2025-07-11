@@ -10,6 +10,7 @@ Twilog検索システム用のMCP（Model Context Protocol）サーバーです�
    - twilog_server.pyを通じた意味的検索
    - SearchEngineによるフィルタリング（サーバー側処理）
    - 重複除去機能
+   - SearchSettings対応（ユーザー・日付フィルタリング、表示件数制御）
 
 2. **get_status** - サーバー状態確認
    - twilog_server.pyの稼働状況確認
@@ -106,7 +107,27 @@ node dist/index.js [オプション]
 }
 ```
 
-**注意**: フィルタリング機能はtwilog_server.py側のSearchEngineで処理されます。MCPサーバーは単純なWebSocketラッパーのため、フィルタリングパラメータの直接指定はできません。
+### 詳細なフィルタリング設定付き検索
+
+```typescript
+{
+  "name": "search_similar",
+  "arguments": {
+    "query": "機械学習",
+    "top_k": 20,
+    "user_filter": {
+      "includes": ["user1", "user2"],
+    },
+    "date_filter": {
+      "from": "2023-01-01 00:00:00",
+      "to": "2023-12-31 23:59:59"
+    },
+    "remove_duplicates": true
+  }
+}
+```
+
+**個別パラメータ対応**: `user_filter`、`date_filter`、`top_k`、`remove_duplicates`を個別に指定可能。MCPサーバー内部でSearchSettings形式に変換してサーバーに送信。
 
 ### ユーザー統計取得
 
@@ -212,10 +233,11 @@ npm start -- --websocket ws://localhost:9999
 
 全ての検索・フィルタリング処理はtwilog_server.py側のSearchEngineで実行されます：
 
-- **ユーザーフィルタリング**: SearchEngineの設定に従って処理
-- **日付フィルタリング**: SearchEngineの設定に従って処理  
+- **ユーザーフィルタリング**: includes/excludes、投稿数閾値によるフィルタリング
+- **日付フィルタリング**: from/to による期間指定フィルタリング
 - **重複除去**: 同一ユーザー・同一内容の投稿で古い投稿を優先
 - **ランキング**: 類似度順でのソート
+- **SearchSettings**: CLIクライアントと完全に同一の設定形式をサポート
 
 ### ラッパーとしての役割
 
