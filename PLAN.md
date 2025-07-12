@@ -32,12 +32,23 @@
 ### タグ検出システムの設計
 **Problem**: 22万件の投稿から手動でタグを抽出するのは現実的でない。また、クラウドAPIでは大量データの処理コストが高い。
 
-**Solution**: ローカルLLM（Ollama + Qwen3:4b）による自動タグ付けシステム。
+**Solution**: 複数の処理方式による自動タグ付けシステム。
+
+#### リアルタイム処理（add_tags.py）
+- ローカルLLM（Ollama + Qwen3:4b）による逐次処理
 - GPU環境での効率的なシーケンシャル処理
 - チェックポイント機能による中断・再開対応
 - Pydanticスキーマによる構造化出力
 - 分割JSONL保存による効率的な管理
 - 1件ずつ追記保存による処理安全性
+- 処理時間: 約158時間（22万件）
+
+#### バッチAPI処理（generate_batch.py）
+- Geminiバッチ処理API用のJSONLリクエスト生成
+- 1万件ずつの最適チャンク分割（バッチAPI上限対応）
+- add_tags.pyのプロンプトとスキーマ設計を継承
+- リアルタイム処理の158時間から大幅な処理時間短縮が期待
+- データ準備時間: 数分（JSONLリクエスト生成のみ）
 
 ### WebSocketベースのアーキテクチャ分離と統合
 **Problem**: ベクトル検索機能をアプリケーションに統合すると、重いライブラリ（torch、SentenceTransformers）の読み込みにより、開発時の頻繁な再起動で生産性が低下する。また、MCPサーバー（TypeScript）とSearchEngine（Python）でフィルタリング機能が二重実装され、保守性とコードの一貫性に問題があった。
@@ -97,6 +108,9 @@ twilog/
 ├── tags/                     # タグ情報（分割ファイル、オプション）
 │   ├── 0000.jsonl           # タグデータ（1000件ずつ）
 │   └── ...
+├── batch/                    # バッチAPIリクエスト（オプション）
+│   ├── 001.jsonl            # Geminiバッチ用リクエスト（1万件ずつ）
+│   └── ...
 ├── embed_server.py           # 基底クラス（BaseEmbedServer）
 ├── twilog_server.py          # 統合WebSocketサーバー（SearchEngine統合）
 ├── twilog_client.py          # テスト用クライアント
@@ -104,6 +118,7 @@ twilog/
 ├── search_engine.py          # フィルタリング機能の中核
 ├── data_csv.py               # CSVベースデータアクセス層
 ├── add_tags.py               # CSVベースタグ付けスクリプト（完了）
+├── generate_batch.py         # バッチAPIリクエスト生成（完了）
 └── mcp/src/index.ts          # MCPラッパー（SQLite実装削除済み）
 ```
 
@@ -137,6 +152,11 @@ twilog/
   - data_csv.pyによるCSVファイル直接読み込み
   - strip_content関数による前処理統合
   - SQLiteデータベース構築不要
+- **generate_batch.py**: バッチAPIリクエスト生成
+  - add_tags.pyのアーキテクチャとプロンプト設計を継承
+  - GeminiバッチAPI用のJSONL形式出力
+  - 1万件ずつの最適チャンク分割（バッチAPI上限対応）
+  - 処理時間を158時間から数分（+API処理時間）に短縮
 - **性能**: 22万件に対して数ミリ秒での高速検索
 - **保守性**: SearchEngine中心の一元化による重複削除
 - **開発効率**: CSVベースによる単純化とセットアップ時間短縮

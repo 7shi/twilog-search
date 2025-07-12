@@ -1,6 +1,6 @@
 # Twilog ログ検索
 
-Twilogのエクスポートデータからベクトル検索とタグ検索（予定）を可能にするデータ処理システム。
+Twilogのエクスポートデータからベクトル検索とタグ検索を可能にするデータ処理システム。
 
 ## 概要
 
@@ -28,6 +28,26 @@ uv run src/vectorize.py
 - **処理内容**: 1000件ずつの分割処理
 - **処理時間**: 約1時間56分（GPU環境）
 - **特徴**: 中断・再開機能対応、SQLiteデータベース不要
+
+### 1-2. タグ付け段階（オプション）
+
+#### リアルタイム処理
+```bash
+uv run src/add_tags.py twilog.csv
+```
+- **入力**: twilog.csv（直接読み込み）
+- **出力**: tags/ディレクトリ（.jsonlファイル、1000件ずつ分割）
+- **処理時間**: 約158時間（22万件、ローカルLLM）
+- **特徴**: 1件ずつ処理・保存、中断・再開機能対応
+
+#### バッチAPI処理
+```bash
+uv run src/generate_batch.py twilog.csv
+```
+- **入力**: twilog.csv（直接読み込み）
+- **出力**: batch/ディレクトリ（.jsonlファイル、1万件ずつ分割）
+- **処理時間**: 数分（JSONLリクエスト生成のみ）
+- **特徴**: GeminiバッチAPI用リクエスト生成、大幅な処理時間短縮が期待
 
 ### 2. 検索サーバー起動段階
 ```bash
@@ -73,12 +93,16 @@ uv run src/mcp_wrap.py node -- /path/to/twilog-mcp-server/dist/index.js
 
 ```
 twilog.csv
-    ↓ vectorize.py (CSVから直接ベクトル化)
-embeddings/ (.safetensorsファイル + meta.json)
-    ↓ twilog_server.py (WebSocketサーバー + SearchEngine統合 + MCP互換メソッド)
-    ├─ search.py (軽量フロントエンド)
-    └─ twilog-mcp-server (単純WebSocketラッパー) 
-        └─ mcp_wrap.py (MCP対話的クライアント)
+    ├─ vectorize.py (CSVから直接ベクトル化)
+    │   ↓
+    │ embeddings/ (.safetensorsファイル + meta.json)
+    │   ↓ twilog_server.py (WebSocketサーバー + SearchEngine統合 + MCP互換メソッド)
+    │   ├─ search.py (軽量フロントエンド)
+    │   └─ twilog-mcp-server (単純WebSocketラッパー) 
+    │       └─ mcp_wrap.py (MCP対話的クライアント)
+    └─ タグ付けパイプライン
+        ├─ add_tags.py (リアルタイム処理) → tags/ (.jsonlファイル)
+        └─ generate_batch.py (バッチAPI用) → batch/ (.jsonlファイル)
 ```
 
 ## 現在の状況
@@ -90,13 +114,15 @@ embeddings/ (.safetensorsファイル + meta.json)
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
 - タグ付け（add_tags.py）- CSVベース対応
+- バッチAPIリクエスト生成（generate_batch.py）- Geminiバッチ処理対応
 
 ## 出力ファイル
 
 | ファイル | 件数 | 説明 |
 |---------|------|------|
 | embeddings/*.safetensors | 複数ファイル | ベクトルデータ |
-| tags/*.jsonl | 任意 | 自動生成タグ（オプション） |
+| tags/*.jsonl | 任意 | 自動生成タグ（リアルタイム処理） |
+| batch/*.jsonl | 任意 | バッチAPIリクエスト（Gemini用） |
 
 ## 技術仕様
 
