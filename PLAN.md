@@ -50,17 +50,13 @@
 - リアルタイム処理の158時間から大幅な処理時間短縮が期待
 - データ準備時間: 数分（JSONLリクエスト生成のみ）
 
-**submit_batch.py**: 複数JSONLファイルの一括バッチジョブ投入
-- 複数ファイル（batch/*.jsonl）の効率的な一括処理
-- JSONL形式によるジョブ管理（job-info.jsonl）
-- 重複投入防止機能による安全性確保
-- 進捗表示とエラーハンドリングによる運用性向上
-
-**poll_batch.py**: バッチジョブの自動ポーリング・結果取得
-- job-info.jsonlの全ジョブを自動監視・ポーリング
-- 完了したジョブの結果をbatch/results/に自動ダウンロード
-- 完了状態の永続化（completed_at）による中断・再開対応
-- 安全なJSONLファイル更新（一時ファイル→リネーム）
+**gemini-batch**: 独立バッチジョブ管理ツール（分離済み）
+- リポジトリ: [gemini-batch](https://github.com/7shi/gemini-batch)
+- 汎用的なGeminiバッチジョブ管理CLIツール
+- `gembatch submit` / `gembatch poll` サブコマンド形式
+- 複数ファイル一括投入・TUIベース進捗表示
+- 自動リソースクリーンアップ機能
+- インストール: `uv tool install https://github.com/7shi/gemini-batch.git`
 
 ### WebSocketベースのアーキテクチャ分離と統合
 **Problem**: ベクトル検索機能をアプリケーションに統合すると、重いライブラリ（torch、SentenceTransformers）の読み込みにより、開発時の頻繁な再起動で生産性が低下する。また、MCPサーバー（TypeScript）とSearchEngine（Python）でフィルタリング機能が二重実装され、保守性とコードの一貫性に問題があった。
@@ -131,8 +127,7 @@ twilog/
 ├── data_csv.py               # CSVベースデータアクセス層
 ├── add_tags.py               # CSVベースタグ付けスクリプト（完了）
 ├── generate_batch.py         # バッチAPIリクエスト生成（完了）
-├── submit_batch.py           # バッチジョブ投入（完了）
-├── poll_batch.py             # バッチジョブポーリング・結果取得（完了）
+└── gemini-batch/             # 独立バッチツール（分離済み）
 └── mcp/src/index.ts          # MCPラッパー（SQLite実装削除済み）
 ```
 
@@ -171,14 +166,11 @@ twilog/
   - GeminiバッチAPI用のJSONL形式出力
   - 1万件ずつの最適チャンク分割（バッチAPI上限対応）
   - 処理時間を158時間から数分（+API処理時間）に短縮
-- **submit_batch.py**: バッチジョブ投入
-  - 複数JSONLファイルの一括投入機能
-  - JSONL形式ジョブ管理による拡張性
-  - 重複投入防止と進捗表示による安全性
-- **poll_batch.py**: バッチジョブポーリング・結果取得
-  - job-info.jsonlの全ジョブ自動監視
-  - 完了したジョブの結果をbatch/results/に自動保存
-  - 中断・再開対応と安全なファイル更新機能
+- **gemini-batchツール**: 独立バッチジョブ管理（分離済み）
+  - リポジトリ: [gemini-batch](https://github.com/7shi/gemini-batch)
+  - 汎用的なGeminiバッチジョブ管理CLIツール
+  - TUIベースのリアルタイム進捗表示
+  - 自動リソースクリーンアップ機能
 - **性能**: 22万件に対して数ミリ秒での高速検索
 - **保守性**: SearchEngine中心の一元化による重複削除
 - **開発効率**: CSVベースによる単純化とセットアップ時間短縮

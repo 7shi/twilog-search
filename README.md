@@ -45,15 +45,16 @@ uv run src/add_tags.py twilog.csv
 # 1. バッチリクエスト生成
 uv run src/generate_batch.py twilog.csv
 
-# 2. バッチジョブ投入
-uv run src/submit_batch.py batch/*.jsonl
-
-# 3. バッチジョブポーリング・結果取得
-uv run src/poll_batch.py
+# 2-3. バッチジョブ投入・ポーリング・結果取得
+# 注意: submit_batch.pyとpoll_batch.pyは独立プロジェクトに移行しました
+# 代替ツール: https://github.com/7shi/gemini-batch
 ```
 - **generate_batch.py**: CSVからGeminiバッチAPI用JSONLリクエスト生成（1万件ずつ分割）
-- **submit_batch.py**: 複数JSONLファイルを一括ジョブ投入、重複防止・進捗管理
-- **poll_batch.py**: ジョブの自動ポーリング、完了時にbatch/results/へ結果ダウンロード
+- **gemini-batch**: バッチジョブ管理用の独立ツール
+  - 複数JSONLファイルの一括ジョブ投入・監視
+  - TUIベースのリアルタイム進捗表示
+  - 自動リソースクリーンアップ機能
+  - インストール: `uv tool install https://github.com/7shi/gemini-batch.git`
 - **処理時間**: リクエスト生成数分 + バッチ処理時間（大幅短縮期待）
 - **特徴**: add_tags.pyのGemini特化版、コスト効率とスケーラビリティを重視
 
@@ -112,8 +113,9 @@ twilog.csv
         ├─ add_tags.py (リアルタイム処理) → tags/ (.jsonlファイル)
         └─ Gemini特化版
             ├─ generate_batch.py (バッチリクエスト生成) → batch/ (.jsonlファイル)
-            ├─ submit_batch.py (バッチジョブ投入) → Geminiバッチ処理
-            └─ poll_batch.py (ジョブポーリング・結果取得) → batch/results/ (.jsonlファイル)
+            └─ gemini-batch (独立ツール)
+                ├─ gembatch submit (バッチジョブ投入) → Geminiバッチ処理
+                └─ gembatch poll (ジョブポーリング・結果取得) → batch/results/ (.jsonlファイル)
 ```
 
 ## 現在の状況
@@ -125,7 +127,7 @@ twilog.csv
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
 - タグ付け（add_tags.py）- CSVベース、リアルタイム処理対応
-- Gemini特化タグ付け（generate_batch.py + submit_batch.py + poll_batch.py）- バッチAPI処理対応
+- Gemini特化タグ付け（generate_batch.py + [gemini-batch](https://github.com/7shi/gemini-batch)）- バッチAPI処理対応
 
 ## 出力ファイル
 
@@ -133,8 +135,8 @@ twilog.csv
 |---------|------|------|
 | embeddings/*.safetensors | 複数ファイル | ベクトルデータ |
 | tags/*.jsonl | 任意 | 自動生成タグ（リアルタイム処理） |
-| batch/*.jsonl | 任意 | バッチAPIリクエスト（Gemini用） |
-| batch/results/*.jsonl | 任意 | バッチ処理結果（Gemini応答） |
+| batch/*.jsonl | 任意 | バッチAPIリクエスト（generate_batch.py生成） |
+| batch/results/*.jsonl | 任意 | バッチ処理結果（gemini-batch取得） |
 
 ## 技術仕様
 

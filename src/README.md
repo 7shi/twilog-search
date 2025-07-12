@@ -7,8 +7,6 @@
 3. **search.py** - 対話的検索インターフェース
 4. **add_tags.py** - タグ付け（オプション）
 5. **generate_batch.py** - バッチAPIリクエスト生成
-6. **submit_batch.py** - バッチジョブ投入
-7. **poll_batch.py** - バッチジョブポーリング・結果取得
 
 ## ユーティリティ
 - **read_csv.py**: 単純なCSVファイル読み込み（データ確認用、特定のデータソースに依存しない）
@@ -20,8 +18,6 @@
 - **vectorize.py**: data_csv.pyをインポートして使用し、CSVファイルから直接データを読み込んでベクトル化を行う
 - **add_tags.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、strip_content関数で前処理を適用してタグ付けを行う
 - **generate_batch.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、GeminiバッチAPI用のJSONLリクエストファイルを生成する（1万件ずつ分割）
-- **submit_batch.py**: 複数のJSONLファイルをGemini Batchジョブとして一括投入、JSONL形式でジョブ管理、重複投入防止機能付き
-- **poll_batch.py**: job-info.jsonlの各ジョブをポーリング、完了したジョブの結果をbatch/results/に自動ダウンロード、完了状態管理機能付き
 
 ## サーバー・クライアント基盤
 - **embed_server.py**: ベクトル化サーバーの基盤実装（データソースに依存しない）
