@@ -184,6 +184,26 @@ def update_job_completion(job_info_file, jobs, job_index, completed_at_datetime,
                 pass
         raise e
 
+def cleanup_job_resources(client, job):
+    """ジョブとファイルのリソースをクリーンアップ"""
+    job_name = job['job_name']
+    input_file_name = job.get('input_file_name')
+    
+    # ジョブを削除
+    try:
+        client.batches.delete(name=job_name)
+    except Exception:
+        # エラーは無視（既に削除済みの可能性）
+        pass
+    
+    # 入力ファイルを削除
+    if input_file_name:
+        try:
+            client.files.delete(name=input_file_name)
+        except Exception:
+            # エラーは無視（既に削除済みの可能性）
+            pass
+
 def download_job_results(client, job, input_file_path):
     """ジョブの結果をダウンロード"""
     try:
@@ -217,8 +237,6 @@ def download_job_results(client, job, input_file_path):
 
 def poll_jobs(job_info_file, client):
     """ジョブをポーリングして完了したものを処理"""
-    completed_states = {"JOB_STATE_SUCCEEDED", "JOB_STATE_FAILED", "JOB_STATE_CANCELLED"}
-    
     with Live(console=console, refresh_per_second=1) as live:
         while True:
             # 最新のジョブ情報を読み込み
@@ -248,7 +266,7 @@ def poll_jobs(job_info_file, client):
                     batch_job = client.batches.get(name=job['job_name'])
                     current_state = batch_job.state.name
                     
-                    if current_state in completed_states:
+                    if current_state != "JOB_STATE_PENDING":
                         # ジョブ完了（成功、失敗、キャンセル問わず）
                         completed_at = datetime.now()
                         
@@ -256,6 +274,9 @@ def poll_jobs(job_info_file, client):
                             # 結果をダウンロード
                             success, message = download_job_results(client, job, job['input_file'])
                             # ダウンロード結果は内部処理のみ
+                        
+                        # 成功・失敗にかかわらずリソースをクリーンアップ
+                        cleanup_job_resources(client, job)
                         
                         # 完了時間と最終状態を記録
                         update_job_completion(job_info_file, jobs, i, completed_at, current_state)
