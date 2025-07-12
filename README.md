@@ -40,14 +40,18 @@ uv run src/add_tags.py twilog.csv
 - **処理時間**: 約158時間（22万件、ローカルLLM）
 - **特徴**: 1件ずつ処理・保存、中断・再開機能対応
 
-#### バッチAPI処理
+#### バッチAPI処理（Gemini特化版）
 ```bash
+# 1. バッチリクエスト生成
 uv run src/generate_batch.py twilog.csv
+
+# 2. バッチジョブ投入
+uv run src/submit_batch.py batch/*.jsonl
 ```
-- **入力**: twilog.csv（直接読み込み）
-- **出力**: batch/ディレクトリ（.jsonlファイル、1万件ずつ分割）
-- **処理時間**: 数分（JSONLリクエスト生成のみ）
-- **特徴**: GeminiバッチAPI用リクエスト生成、大幅な処理時間短縮が期待
+- **generate_batch.py**: CSVからGeminiバッチAPI用JSONLリクエスト生成（1万件ずつ分割）
+- **submit_batch.py**: 複数JSONLファイルを一括ジョブ投入、重複防止・進捗管理
+- **処理時間**: リクエスト生成数分 + バッチ処理時間（大幅短縮期待）
+- **特徴**: add_tags.pyのGemini特化版、コスト効率とスケーラビリティを重視
 
 ### 2. 検索サーバー起動段階
 ```bash
@@ -102,7 +106,9 @@ twilog.csv
     │       └─ mcp_wrap.py (MCP対話的クライアント)
     └─ タグ付けパイプライン
         ├─ add_tags.py (リアルタイム処理) → tags/ (.jsonlファイル)
-        └─ generate_batch.py (バッチAPI用) → batch/ (.jsonlファイル)
+        └─ Gemini特化版
+            ├─ generate_batch.py (バッチリクエスト生成) → batch/ (.jsonlファイル)
+            └─ submit_batch.py (バッチジョブ投入) → Geminiバッチ処理
 ```
 
 ## 現在の状況
@@ -113,8 +119,8 @@ twilog.csv
 - ベクトル検索（search.py）
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
-- タグ付け（add_tags.py）- CSVベース対応
-- バッチAPIリクエスト生成（generate_batch.py）- Geminiバッチ処理対応
+- タグ付け（add_tags.py）- CSVベース、リアルタイム処理対応
+- Gemini特化タグ付け（generate_batch.py + submit_batch.py）- バッチAPI処理対応
 
 ## 出力ファイル
 
