@@ -13,6 +13,12 @@ HOST = "localhost"
 PORT = 8765
 
 
+def rpc_method(func):
+    """RPC経由で呼び出し可能なメソッドをマーク"""
+    func._is_rpc_method = True
+    return func
+
+
 class BaseEmbedServer():
     def __init__(self, model_name: str):
         self.model = None
@@ -93,8 +99,8 @@ class BaseEmbedServer():
                 # メソッド名でディスパッチ
                 try:
                     method_handler = getattr(self, method, None)
-                    if method_handler and callable(method_handler):
-                        result = await method_handler(params)
+                    if getattr(method_handler, '_is_rpc_method', False):
+                        result = await method_handler(**params)
                         
                         # Streaming Extensions対応（dictかつstreamingフィールドのみを含む場合のみ）
                         if isinstance(result, dict) and len(result) == 1 and "streaming" in result:
@@ -212,7 +218,8 @@ class EmbedServer(BaseEmbedServer):
         
         self.init_completed = True
     
-    async def get_status(self, params: dict = None):
+    @rpc_method
+    async def get_status(self):
         """ステータスを取得"""
         return {
             "status": "running", 
@@ -221,14 +228,16 @@ class EmbedServer(BaseEmbedServer):
             "model": self.model_name
         }
     
-    async def check_init(self, params: dict = None):
+    @rpc_method
+    async def check_init(self):
         """初期化状況を確認"""
         if self.init_completed:
             return {"status": "init_completed"}
         else:
             return {"status": "init_in_progress"}
     
-    async def stop_server(self, params: dict = None):
+    @rpc_method
+    async def stop_server(self):
         """サーバーを停止"""
         return {"status": "stopping"}
     
@@ -256,16 +265,16 @@ class EmbedServer(BaseEmbedServer):
         encoded_data = base64.b64encode(data).decode('utf-8')
         return encoded_data
     
-    async def embed_text(self, params: dict = None):
+    @rpc_method
+    async def embed_text(self, text: str):
         """クエリをベクトル化"""
         if not self.init_completed:
             raise RuntimeError("モデルがまだ初期化されていません")
         
-        query = params.get("text") if params else None
-        if not query:
-            raise ValueError("Invalid params: text is required")
+        if not text:
+            raise ValueError("text is required")
         
-        vector = self._embed_text(query)
+        vector = self._embed_text(text)
         # safetensorsとしてエンコード
         vector_data = self._encode_vector_to_safetensors(vector)
         

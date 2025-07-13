@@ -66,3 +66,8 @@
 **Problem**: 初期の実装では、SearchSettingsにuser_post_countsが含まれていたため、大量のユーザーデータ（数万人分の投稿数情報）がクライアントからサーバーに毎回送信され、ネットワーク通信量が大幅に増大していた。また、クライアント側で本来不要なユーザー統計データを管理する必要があった。
 
 **Solution**: user_post_countsをSearchSettingsから完全に分離し、純粋な設定値のみをシリアライズする軽量な通信方式に変更。サーバー側でuser_post_countsを一元管理し、フィルタリング時に引数として提供する設計を採用。これにより、SearchSettingsのシリアライズ時のデータ量を大幅に削減し、クライアント・サーバー間の通信効率を向上させた。設定管理がより直感的で効率的になり、ネットワーク負荷を最小化した。
+
+### @rpc_methodデコレーターによる継承クライアントセキュリティ統一
+**Problem**: 基底クラス（EmbedClient）の`@rpc_method`デコレーター導入により、継承クライアント（TwilogClient）でも統一されたセキュリティモデルが必要になった。また、TwilogCommand側でも同様のセキュリティ制御が必要だった。
+
+**Solution**: TwilogClientの全RPCメソッド（`vector_search`、`search_similar`、`get_user_stats`、`get_database_stats`、`search_posts_by_text`）とTwilogCommandの対応するコマンドメソッドに`@rpc_method`デコレーターを追加。基底クラスの`execute`メソッドで実行される`_is_rpc_method`チェックにより、明示的にマークされたメソッドのみが呼び出し可能になり、継承階層全体で統一されたセキュリティが確保された。

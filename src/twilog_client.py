@@ -15,7 +15,7 @@ import asyncio
 import argparse
 from typing import Dict, Optional
 from urllib.parse import urlparse
-from embed_client import EmbedClient, EmbedCommand
+from embed_client import EmbedClient, EmbedCommand, rpc_method
 from settings import SearchSettings
 
 
@@ -35,6 +35,7 @@ class TwilogClient(EmbedClient):
         port = parsed_url.port or 8765
         super().__init__(host=host, port=port)
     
+    @rpc_method
     async def vector_search(self, query_text: str, top_k: Optional[int] = None) -> Dict:
         """
         ベクトル検索を実行
@@ -66,6 +67,7 @@ class TwilogClient(EmbedClient):
         first["data"] = data
         return first
     
+    @rpc_method
     async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None) -> list:
         """
         類似検索を実行（フィルタリング付き）
@@ -85,6 +87,7 @@ class TwilogClient(EmbedClient):
             params["settings"] = search_settings.to_dict()
         return await self._send_request("search_similar", params)
     
+    @rpc_method
     async def get_user_stats(self, limit: Optional[int] = None) -> list:
         """
         ユーザー統計を取得
@@ -103,6 +106,7 @@ class TwilogClient(EmbedClient):
             params["limit"] = limit
         return await self._send_request("get_user_stats", params)
     
+    @rpc_method
     async def get_database_stats(self) -> dict:
         """
         データベース統計を取得
@@ -115,6 +119,7 @@ class TwilogClient(EmbedClient):
         """
         return await self._send_request("get_database_stats", {})
     
+    @rpc_method
     async def search_posts_by_text(self, search_term: str, limit: Optional[int] = None) -> list:
         """
         テキスト検索を実行
@@ -179,6 +184,7 @@ class TwilogCommand(EmbedCommand):
         
         return parser
     
+    @rpc_method
     async def vector_search(self, args) -> None:
         """vector_searchコマンドの処理"""
         results = await self.client.vector_search(args.query, args.top_k)
@@ -187,6 +193,7 @@ class TwilogCommand(EmbedCommand):
         for i, (post_id, similarity) in enumerate(data[:10], 1):
             print(f"{i:2d}. similarity={similarity:.5f}, post_id={post_id}")
     
+    @rpc_method
     async def search_similar(self, args) -> None:
         """search_similarコマンドの処理"""
         search_settings = None
@@ -204,6 +211,7 @@ class TwilogCommand(EmbedCommand):
             print(f"{rank:2d}. {similarity:.5f} - @{user} [{timestamp}]")
             print(f"    {content}...")
     
+    @rpc_method
     async def get_user_stats(self, args) -> None:
         """get_user_statsコマンドの処理"""
         results = await self.client.get_user_stats(args.limit)
@@ -211,6 +219,7 @@ class TwilogCommand(EmbedCommand):
         for i, stat in enumerate(results[:20], 1):
             print(f"{i:2d}. {stat['user']}: {stat['post_count']}投稿")
     
+    @rpc_method
     async def get_database_stats(self, args) -> None:
         """get_database_statsコマンドの処理"""
         results = await self.client.get_database_stats()
@@ -221,6 +230,7 @@ class TwilogCommand(EmbedCommand):
         if date_range:
             print(f"  データ期間: {date_range.get('earliest', '')} ～ {date_range.get('latest', '')}")
     
+    @rpc_method
     async def search_posts_by_text(self, args) -> None:
         """search_posts_by_textコマンドの処理"""
         results = await self.client.search_posts_by_text(args.search_term, args.limit)

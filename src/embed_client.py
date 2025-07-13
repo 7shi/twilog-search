@@ -10,6 +10,13 @@ from typing import Optional, Dict, List, Any
 HOST = "localhost"
 PORT = 8765
 
+
+def rpc_method(func):
+    """RPC経由で呼び出し可能なメソッドをマーク"""
+    func._is_rpc_method = True
+    return func
+
+
 # グローバル連番カウンター
 _request_id_counter = 0
 
@@ -18,6 +25,7 @@ def _get_next_request_id() -> int:
     global _request_id_counter
     _request_id_counter += 1
     return _request_id_counter
+
 
 class BaseEmbedClient():
     """ベースクライアントクラス - 継承して拡張可能"""
@@ -100,14 +108,17 @@ class BaseEmbedClient():
 class EmbedClient(BaseEmbedClient):
     """基本的な埋め込みクライアント実装"""
     
+    @rpc_method
     async def get_status(self) -> Dict[str, Any]:
         """サーバーステータスを取得"""
         return await self._send_request("get_status")
     
+    @rpc_method
     async def check_init(self) -> Dict[str, Any]:
         """初期化状況を確認"""
         return await self._send_request("check_init")
     
+    @rpc_method
     async def stop_server(self) -> Dict[str, Any]:
         """サーバーを停止"""
         return await self._send_request("stop_server")
@@ -126,6 +137,7 @@ class EmbedClient(BaseEmbedClient):
         except Exception:
             return None
     
+    @rpc_method
     async def embed_text(self, text: str) -> Dict[str, Any]:
         """クエリをベクトル化"""
         return await self._send_request("embed_text", {"text": text})
@@ -178,6 +190,7 @@ class EmbedCommand:
         
         return parser
     
+    @rpc_method
     async def embed_text(self, args) -> None:
         """embed_textコマンドの処理"""
         await self.client.embed_text_with_details(args.text)
@@ -194,12 +207,12 @@ class EmbedCommand:
         # サブコマンド名と同名のメソッドを呼び出し
         try:
             command_method = getattr(self, args.command, None)
-            if command_method is not None:
+            if getattr(command_method, '_is_rpc_method', False):
                 await command_method(args)
             else:
                 # EmbedCommandにメソッドが見つからない場合、EmbedClientを呼び出してYAML表示
                 client_method = getattr(self.client, args.command, None)
-                if client_method is not None:
+                if getattr(client_method, '_is_rpc_method', False):
                     result = await client_method()
                     print(yaml.dump(result, default_flow_style=False, allow_unicode=True).rstrip())
                 else:

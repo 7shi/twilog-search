@@ -4,7 +4,7 @@ import sys
 import time
 import argparse
 from pathlib import Path
-from embed_server import EmbedServer, check_server_status, stop_server, start_daemon
+from embed_server import EmbedServer, check_server_status, stop_server, start_daemon, rpc_method
 from settings import SearchSettings
 from search_engine import SearchEngine
 
@@ -39,14 +39,11 @@ class TwilogServer(EmbedServer):
             await self.report_progress(f"初期化失敗: {e}")
             raise  # 例外を再発生させて上位で処理される
     
-    async def vector_search(self, params: dict = None):
+    @rpc_method
+    async def vector_search(self, query: str, top_k: int = None):
         """類似検索を実行（Streaming Extensions対応、V|T検索対応）"""
-        query = params.get("query") if params else None
         if not query:
-            raise ValueError("Invalid params: query is required")
-        
-        # パラメータの取得
-        top_k = params.get("top_k") if params else None
+            raise ValueError("query is required")
         
         # SearchEngineにベクトル検索を委譲
         results = self.search_engine.vector_search(query, top_k=top_k)
@@ -71,16 +68,15 @@ class TwilogServer(EmbedServer):
         # Streaming Extensions形式でラップ
         return {"streaming": chunks}
     
-    async def search_similar(self, params: dict = None):
+    @rpc_method
+    async def search_similar(self, query: str, settings: dict = None):
         """類似検索を実行（フィルタリング付き、V|T検索対応）"""
-        query = params.get("query") if params else None
         if not query:
-            raise ValueError("Invalid params: query is required")
+            raise ValueError("query is required")
         
         # SearchSettingsを取得またはデフォルト設定作成
-        search_settings_dict = params.get("settings") if params else None
-        if search_settings_dict:
-            search_settings = SearchSettings.from_dict(search_settings_dict)
+        if settings:
+            search_settings = SearchSettings.from_dict(settings)
         else:
             search_settings = SearchSettings()
         
@@ -103,10 +99,9 @@ class TwilogServer(EmbedServer):
         
         return structured_results
     
-    async def get_user_stats(self, params: dict = None):
+    @rpc_method
+    async def get_user_stats(self, limit: int = 50):
         """ユーザー統計を取得"""
-        limit = params.get("limit", 50) if params else 50
-        
         # limitのバリデーション
         if limit < 1 or limit > 1000:
             raise ValueError(f"limit must be between 1 and 1000, got {limit}")
@@ -114,18 +109,17 @@ class TwilogServer(EmbedServer):
         # SearchEngineに委譲
         return self.search_engine.get_user_stats(limit)
     
-    async def get_database_stats(self, params: dict = None):
+    @rpc_method
+    async def get_database_stats(self):
         """データベース統計を取得"""
         # SearchEngineに委譲
         return self.search_engine.get_database_stats()
     
-    async def search_posts_by_text(self, params: dict = None):
+    @rpc_method
+    async def search_posts_by_text(self, search_term: str, limit: int = 50):
         """テキスト検索を実行"""
-        search_term = params.get("search_term") if params else None
         if not search_term:
-            raise ValueError("Invalid params: search_term is required")
-        
-        limit = params.get("limit", 50) if params else 50
+            raise ValueError("search_term is required")
         
         # limitのバリデーション
         if limit < 1 or limit > 1000:

@@ -126,3 +126,8 @@
 **Problem**: TwilogServerがSearchEngineからベクトル化機能を分離して保持していたため、相互参照による設計の不健全性が生じ、SearchEngine単体でのテストが困難になっていた。また、V|T解析やベクトル化処理がTwilogServer側に残存し、責務の分離が不完全だった。
 
 **Solution**: SearchEngineのコンストラクタに`self._embed_text`を渡し、SearchEngineを完全に自己完結させる設計に変更。`search_similar`と`vector_search`を文字列クエリを直接受け取るAPIに修正し、V|T解析・ベクトル化・フィルタリングのすべてをSearchEngine内部で実行。TwilogServerは純粋なRPCラッパーとなり、クエリ文字列とsettingsをそのまま委譲し、結果をRPC形式に変換するのみを担当。これにより、ロジックの一元化と明確な責務分離を実現した。
+
+### RPC引数形式の自然な統一化とセキュリティ強化
+**Problem**: 基底クラス（embed_server.py）の`params: dict = None`形式から継承したメソッドシグネチャが不明確で、IDEでの型推論や補完機能が効果的に機能していなかった。また、動的メソッド呼び出しにより意図しないメソッドがRPC経由でアクセス可能になるセキュリティリスクが存在していた。
+
+**Solution**: 各RPCメソッドを自然な引数形式に変更し、基底クラスの`@rpc_method`デコレーターを継承してセキュリティを強化。`vector_search(query: str, top_k: int = None)`、`search_similar(query: str, settings: dict = None)`、`get_user_stats(limit: int = 50)`、`search_posts_by_text(search_term: str, limit: int = 50)`として明確なメソッドシグネチャを確立。デコレーターにより明示的にマークされたメソッドのみがRPC経由で呼び出し可能となり、APIの安全性と開発効率を両立。
