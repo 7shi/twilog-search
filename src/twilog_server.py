@@ -60,7 +60,25 @@ class TwilogServer(EmbedServer):
         top_k = params.get("top_k") if params else None
         
         # SearchEngineにベクトル検索を委譲
-        chunks = self.search_engine.vector_search(query_vector, top_k=top_k, text_filter=text_filter)
+        results = self.search_engine.vector_search(query_vector, top_k=top_k, text_filter=text_filter)
+        
+        # Streaming Extensions対応: 結果を分割（2万件ずつ）
+        chunk_size = 20000
+        total_chunks = (len(results) + chunk_size - 1) // chunk_size if results else 1
+        
+        chunks = []
+        for i in range(max(1, total_chunks)):
+            start_idx = i * chunk_size
+            end_idx = min(start_idx + chunk_size, len(results))
+            chunk_data = results[start_idx:end_idx] if results else []
+            
+            chunk = {
+                "data": chunk_data,
+                "chunk": i + 1,
+                "total_chunks": total_chunks,
+                "start_rank": start_idx + 1
+            }
+            chunks.append(chunk)
         
         # Streaming Extensions形式でラップ
         return {"streaming": chunks}

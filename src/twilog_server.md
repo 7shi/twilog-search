@@ -116,3 +116,8 @@
 **Problem**: ベクトル検索とテキスト検索を個別のAPIで提供していたため、クライアント側で複合検索を実装する際の複雑性と、通信コストの増大が課題となっていた。
 
 **Solution**: `parse_pipeline_query`による統一構文解析を`vector_search`と`search_similar`メソッドに統合。クエリ文字列を`V|T`形式で解析し、ベクトル部分とテキスト部分を分離して処理する機能を実装。`|text`（ベクトル部分が空）の場合はテキスト検索のみを実行し、`vector|text`の場合はベクトル検索結果をテキストフィルタリングする複合検索を実行。既存APIの透明な拡張により、クライアント側の変更なしに高度な検索機能を提供した。
+
+### RPCレイヤーでのchunk分割統合
+**Problem**: SearchEngineの`vector_search`メソッドでStreaming Extensions対応のchunk分割処理を実行していたため、内部API使用時に不要な分割処理が実行され、処理効率と設計の単純性が損なわれていた。
+
+**Solution**: chunk分割処理をSearchEngineからTwilogServerの`vector_search`メソッドに移動し、RPC通信レイヤーでのみ分割処理を実行する設計に変更。SearchEngineからフラットな配列を受け取り、twilog_server側で2万件ずつのchunk分割とStreaming Extensions形式（`{"streaming": chunks}`）への変換を実行。これにより、内部APIは単純な配列処理を維持し、RPC通信の要件（大容量データの分割送信）は通信レイヤーで解決する責務分離を実現した。

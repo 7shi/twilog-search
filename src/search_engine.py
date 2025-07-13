@@ -199,9 +199,9 @@ class SearchEngine:
         
         return True
     
-    def vector_search(self, query_vector: Any, top_k: int = None, text_filter: str = "") -> List[dict]:
+    def vector_search(self, query_vector: Any, top_k: int = None, text_filter: str = "") -> List[Tuple[int, float]]:
         """
-        ベクトル検索を実行（Streaming Extensions対応）
+        ベクトル検索を実行
         
         Args:
             query_vector: クエリベクトル
@@ -209,20 +209,14 @@ class SearchEngine:
             text_filter: テキストフィルタリング条件（V|T検索用）
             
         Returns:
-            チャンク形式の検索結果
+            (post_id, similarity)のタプルリスト
         """
         # embeddings遅延読み込み
         if self.vectors is None:
             self._load_embeddings()
         
         if self.vectors is None or len(self.vectors) == 0:
-            # 空結果の場合もチャンク形式で返却
-            return [{
-                "data": [],
-                "chunk": 1,
-                "total_chunks": 1,
-                "start_rank": 1,
-            }]
+            return []
         
         
         # コサイン類似度の計算
@@ -256,25 +250,7 @@ class SearchEngine:
             if top_k is not None and len(results) >= top_k:
                 break
         
-        # Streaming Extensions対応: 結果を分割（2万件ずつ）
-        chunk_size = 20000
-        total_chunks = (len(results) + chunk_size - 1) // chunk_size if results else 1
-        
-        chunks = []
-        for i in range(max(1, total_chunks)):
-            start_idx = i * chunk_size
-            end_idx = min(start_idx + chunk_size, len(results))
-            chunk_data = results[start_idx:end_idx] if results else []
-            
-            chunk = {
-                "data": chunk_data,
-                "chunk": i + 1,
-                "total_chunks": total_chunks,
-                "start_rank": start_idx + 1
-            }
-            chunks.append(chunk)
-        
-        return chunks
+        return results
     
     def search_similar(self, query_vector: Any, search_settings: SearchSettings, text_filter: str = "") -> List[dict]:
         """
@@ -289,12 +265,7 @@ class SearchEngine:
             フィルタリング済み検索結果
         """
         # ベクトル検索を実行（テキストフィルタリング付き、top_kは後で適用）
-        vector_search_results = self.vector_search(query_vector, top_k=None, text_filter=text_filter)
-        
-        # チャンク形式の結果を統合
-        all_results = []
-        for chunk in vector_search_results:
-            all_results.extend(chunk.get("data", []))
+        all_results = self.vector_search(query_vector, top_k=None, text_filter=text_filter)
         
         # フィルタリング（ユーザー・日付フィルタリング）
         filtered_results = []

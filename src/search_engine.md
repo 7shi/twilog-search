@@ -64,3 +64,8 @@
 **Problem**: ベクトル検索とテキスト検索を組み合わせた複合検索で、大量のベクトル検索結果をテキストフィルタリングする際の処理効率が課題だった。
 
 **Solution**: `vector_search`メソッドに`text_filter`引数を追加し、類似度順に1件ずつテキストフィルタリングを実行してtop_kに達したら早期終了する効率的なアルゴリズムを実装。`is_post_text_match`による単一投稿のフィルタリング関数を分離し、V→T処理順序による結果の整合性を保証した。
+
+### 内部API設計によるchunk分割の分離
+**Problem**: `vector_search`メソッドでRPC通信用のchunk分割処理（Streaming Extensions対応）を実行していたため、内部APIとして使用する際にも不要な分割処理が実行され、処理が複雑化していた。
+
+**Solution**: SearchEngineの`vector_search`をフラットな`List[Tuple[int, float]]`を返すシンプルな内部APIに変更し、chunk分割処理をRPCレイヤー（twilog_server.py）に移動。内部では単純な配列として処理し、RPC通信時のみStreaming Extensions対応の分割処理を実行する責務分離を実現。これにより、SearchEngineは純粋な検索エンジンとして機能し、通信プロトコルの詳細から分離された。
