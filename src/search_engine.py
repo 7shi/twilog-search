@@ -2,25 +2,27 @@
 """
 Twilogベクトル検索エンジン
 """
-from typing import List, Tuple, Generator, Any, Optional
+from typing import List, Tuple, Generator, Any, Optional, Callable
 from pathlib import Path
 from settings import SearchSettings
 from data_csv import TwilogDataAccess
-from text_proc import parse_search_terms
+from text_proc import parse_search_terms, parse_pipeline_query
 
 
 class SearchEngine:
     """Twilogベクトル検索クラス"""
     
-    def __init__(self, embeddings_dir: str):
+    def __init__(self, embeddings_dir: str, embed_func: Callable[[str], Any]):
         """
         初期化（遅延初期化対応）
         
         Args:
             embeddings_dir: 埋め込みディレクトリのパス
+            embed_func: テキストをベクトル化する関数
         """
         # パラメータを保存（初期化は後で行う）
         self.embeddings_dir = Path(embeddings_dir)
+        self._embed_text = embed_func
         
         # メタデータを読み込み
         metadata_path = self.embeddings_dir / "meta.json"
@@ -114,103 +116,54 @@ class SearchEngine:
         else:
             self.post_ids, self.vectors = [], torch.tensor([])
     
-    def filter_search(self, vector_search_results: List[Tuple[int, float]], search_settings: SearchSettings) -> Generator[Tuple[int, float, dict], None, None]:
+    def is_text_match(self, content: str, include_terms: List[str], exclude_terms: List[str]) -> bool:
         """
-        ベクトル検索の結果を絞り込む
+        テキスト内容がテキスト条件に合致するかチェック
         
         Args:
-            vector_search_results: ベクトル検索結果
-            search_settings: 検索設定
-            
-        Yields:
-            (rank, similarity, post_info)のタプル
-        """
-        # 重複除去用の辞書
-        seen_combinations = {}  # (user, content) -> (post_id, similarity, timestamp, url)
-        
-        rank = 1
-        for post_id, similarity in vector_search_results:
-            user = self.post_user_map.get(post_id, '')
-            
-            # ユーザーフィルタリング条件をチェック
-            if not search_settings.user_filter.is_user_allowed(user, self.user_post_counts):
-                continue
-            
-            # 投稿内容を個別取得
-            post_info = self.data_access.get_post_content([post_id]).get(post_id, {})
-            content = post_info.get('content', '').strip()
-            timestamp = post_info.get('timestamp', '')
-            url = post_info.get('url', '')
-            
-            # 日付フィルタリング条件をチェック
-            if not search_settings.date_filter.is_date_allowed(timestamp):
-                continue
-            
-            key = (user, content)
-            
-            # 重複チェック（常に有効）
-            if key in seen_combinations:
-                # 既存の投稿と同じユーザー・内容の場合、日付が古い方を優先
-                _, _, existing_timestamp, _ = seen_combinations[key]
-                if timestamp < existing_timestamp:
-                    # 現在の投稿の方が古い場合、既存を置き換え
-                    seen_combinations[key] = (post_id, similarity, timestamp, url)
-                continue
-            
-            # 新しい組み合わせの場合、追加
-            seen_combinations[key] = (post_id, similarity, timestamp, url)
-            
-            yield rank, similarity, {
-                'post_id': post_id,
-                'content': content,
-                'timestamp': timestamp,
-                'url': url,
-                'user': user
-            }
-            
-            rank += 1
-    
-    def is_post_text_match(self, post_id: int, include_terms: List[str], exclude_terms: List[str]) -> bool:
-        """
-        単一投稿がテキスト条件に合致するかチェック
-        
-        Args:
-            post_id: 投稿ID
+            content: 投稿内容
             include_terms: 含む条件の検索語リスト
             exclude_terms: 除外条件の検索語リスト
             
         Returns:
             条件に合致するかのbool値
         """
-        post_data = self.data_access.posts_data.get(post_id, {})
-        content = post_data.get("content", "").lower()
+        content_lower = content.lower()
         
         # include_termsの全てが含まれているかチェック
         if include_terms:
-            include_match = all(term.lower() in content for term in include_terms)
+            include_match = all(term.lower() in content_lower for term in include_terms)
             if not include_match:
                 return False
         
         # exclude_termsのいずれも含まれていないかチェック
         if exclude_terms:
-            exclude_match = any(term.lower() in content for term in exclude_terms)
+            exclude_match = any(term.lower() in content_lower for term in exclude_terms)
             if exclude_match:
                 return False
         
         return True
     
-    def vector_search(self, query_vector: Any, top_k: int = None, text_filter: str = "") -> List[Tuple[int, float]]:
+    def vector_search(self, query: str, top_k: int = None) -> List[Tuple[int, float]]:
         """
         ベクトル検索を実行
         
         Args:
-            query_vector: クエリベクトル
+            query: クエリ文字列（V|T形式対応）
             top_k: 取得件数制限
-            text_filter: テキストフィルタリング条件（V|T検索用）
             
         Returns:
             (post_id, similarity)のタプルリスト
         """
+        # V|T検索の解析
+        vector_query, text_filter = parse_pipeline_query(query)
+        
+        # ベクトル検索クエリが空の場合はエラー
+        if not vector_query:
+            raise ValueError("Vector query is empty: vector_search requires a vector query part")
+        
+        # ベクトル検索クエリをベクトル化
+        query_vector = self._embed_text(vector_query)
         # embeddings遅延読み込み
         if self.vectors is None:
             self._load_embeddings()
@@ -241,7 +194,9 @@ class SearchEngine:
             
             # テキストフィルタリングを適用
             if text_filter:
-                if not self.is_post_text_match(post_id, text_include_terms, text_exclude_terms):
+                post_data = self.data_access.posts_data.get(post_id, {})
+                content = post_data.get("content", "")
+                if not self.is_text_match(content, text_include_terms, text_exclude_terms):
                     continue
             
             results.append((post_id, similarity))
@@ -252,27 +207,104 @@ class SearchEngine:
         
         return results
     
-    def search_similar(self, query_vector: Any, search_settings: SearchSettings, text_filter: str = "") -> List[dict]:
+    def _generate_text_results(self, text_filter: str) -> Generator[Tuple[dict, float], None, None]:
+        """
+        テキスト検索結果を(post_info, similarity)形式で生成
+        
+        Args:
+            text_filter: テキストフィルタリング条件
+            
+        Yields:
+            (post_info, similarity)のタプル
+        """
+        text_results = self.search_posts_by_text(text_filter, limit=10000)
+        for result in text_results:
+            yield result, 1.0
+    
+    def _generate_vector_results(self, vector_query: str) -> Generator[Tuple[dict, float], None, None]:
+        """
+        ベクトル検索結果を(post_info, similarity)形式で生成
+        
+        Args:
+            vector_query: ベクトル検索クエリ
+            
+        Yields:
+            (post_info, similarity)のタプル
+        """
+        all_results = self.vector_search(vector_query, top_k=None)
+        for post_id, similarity in all_results:
+            user = self.post_user_map.get(post_id, '')
+            post_data = self.data_access.get_post_content([post_id]).get(post_id, {})
+            post_info = {
+                'post_id': post_id,
+                'content': post_data.get('content', '').strip(),
+                'timestamp': post_data.get('timestamp', ''),
+                'url': post_data.get('url', ''),
+                'user': user
+            }
+            yield post_info, similarity
+    
+    def search_similar(self, query: str, search_settings: SearchSettings) -> List[Tuple[int, float, dict]]:
         """
         類似検索を実行（フィルタリング付き）
         
         Args:
-            query_vector: クエリベクトル
+            query: クエリ文字列（V|T形式対応）
             search_settings: 検索設定
-            text_filter: テキストフィルタリング条件（V|T検索用）
             
         Returns:
-            フィルタリング済み検索結果
+            (rank, similarity, post_info)のタプルリスト
         """
-        # ベクトル検索を実行（テキストフィルタリング付き、top_kは後で適用）
-        all_results = self.vector_search(query_vector, top_k=None, text_filter=text_filter)
+        # V|T検索の解析
+        vector_query, text_filter = parse_pipeline_query(query)
         
-        # フィルタリング（ユーザー・日付フィルタリング）
+        # 結果ジェネレーターの選択
+        if not vector_query:
+            if not text_filter:
+                raise ValueError("Empty query: both vector and text parts are empty")
+            results_generator = self._generate_text_results(text_filter)
+        else:
+            results_generator = self._generate_vector_results(vector_query)
+        
+        # 統一されたフィルタリングループ
         filtered_results = []
         top_k = search_settings.top_k.get_top_k()
+        seen_combinations = {}  # (user, content) -> (post_id, similarity, timestamp, url)
+        rank = 1
         
-        for result in self.filter_search(all_results, search_settings):
-            filtered_results.append(result)
+        for post_info, similarity in results_generator:
+            # フィルタリング条件をチェック
+            user = post_info.get('user', '')
+            timestamp = post_info.get('timestamp', '')
+            
+            # ユーザーフィルタリング条件をチェック
+            if not search_settings.user_filter.is_user_allowed(user, self.user_post_counts):
+                continue
+            
+            # 日付フィルタリング条件をチェック
+            if not search_settings.date_filter.is_date_allowed(timestamp):
+                continue
+            
+            # 重複チェック（常に有効）
+            content = post_info['content']
+            url = post_info['url']
+            post_id = post_info['post_id']
+            key = (user, content)
+            
+            if key in seen_combinations:
+                # 既存の投稿と同じユーザー・内容の場合、日付が古い方を優先
+                _, _, existing_timestamp, _ = seen_combinations[key]
+                if timestamp < existing_timestamp:
+                    # 現在の投稿の方が古い場合、既存を置き換え
+                    seen_combinations[key] = (post_id, similarity, timestamp, url)
+                continue
+            
+            # 新しい組み合わせの場合、追加
+            seen_combinations[key] = (post_id, similarity, timestamp, url)
+            
+            filtered_results.append((rank, similarity, post_info))
+            
+            rank += 1
             if len(filtered_results) >= top_k:
                 break
         
@@ -342,13 +374,13 @@ class SearchEngine:
         
         # 結果を構築
         results = []
-        for post_id in self.data_access.posts_data.keys():
-            if self.is_post_text_match(post_id, include_terms, exclude_terms):
-                post_data = self.data_access.posts_data.get(post_id, {})
+        for post_id, post_data in self.data_access.posts_data.items():
+            content = post_data.get("content", "")
+            if self.is_text_match(content, include_terms, exclude_terms):
                 user = self.post_user_map.get(post_id, "")
                 results.append({
                     "post_id": post_id,
-                    "content": post_data.get("content", ""),
+                    "content": content,
                     "timestamp": post_data.get("timestamp", ""),
                     "url": post_data.get("url", ""),
                     "user": user

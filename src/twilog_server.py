@@ -7,7 +7,6 @@ from pathlib import Path
 from embed_server import EmbedServer, check_server_status, stop_server, start_daemon
 from settings import SearchSettings
 from search_engine import SearchEngine
-from text_proc import parse_pipeline_query
 
 
 class TwilogServer(EmbedServer):
@@ -17,7 +16,7 @@ class TwilogServer(EmbedServer):
         self.embeddings_dir = Path(embeddings_dir)
         
         # SearchEngineインスタンスを生成（初期化は後で行う）
-        self.search_engine = SearchEngine(self.embeddings_dir)
+        self.search_engine = SearchEngine(self.embeddings_dir, self._embed_text)
         
         # SearchEngineからモデル名を取得
         model_name = self.search_engine.get_model_name()
@@ -46,21 +45,11 @@ class TwilogServer(EmbedServer):
         if not query:
             raise ValueError("Invalid params: query is required")
         
-        # V|T検索の解析
-        vector_query, text_filter = parse_pipeline_query(query)
-        
-        # ベクトル検索クエリが空の場合はエラー
-        if not vector_query:
-            raise ValueError("Vector query is empty: vector_search requires a vector query part")
-        
-        # ベクトル検索クエリをベクトル化
-        query_vector = self._embed_text(vector_query)
-        
         # パラメータの取得
         top_k = params.get("top_k") if params else None
         
         # SearchEngineにベクトル検索を委譲
-        results = self.search_engine.vector_search(query_vector, top_k=top_k, text_filter=text_filter)
+        results = self.search_engine.vector_search(query, top_k=top_k)
         
         # Streaming Extensions対応: 結果を分割（2万件ずつ）
         chunk_size = 20000
@@ -71,7 +60,6 @@ class TwilogServer(EmbedServer):
             start_idx = i * chunk_size
             end_idx = min(start_idx + chunk_size, len(results))
             chunk_data = results[start_idx:end_idx] if results else []
-            
             chunk = {
                 "data": chunk_data,
                 "chunk": i + 1,
@@ -101,39 +89,8 @@ class TwilogServer(EmbedServer):
         if top_k < 1 or top_k > 100:
             raise ValueError(f"top_k must be between 1 and 100, got {top_k}")
         
-        # V|T検索の解析
-        vector_query, text_filter = parse_pipeline_query(query)
-        
-        # ベクトル検索クエリが空の場合、テキスト検索のみ実行
-        if not vector_query:
-            if not text_filter:
-                raise ValueError("Empty query: both vector and text parts are empty")
-            
-            # テキスト検索のみ実行
-            text_results = self.search_engine.search_posts_by_text(text_filter, limit=top_k)
-            
-            # search_similarの形式に変換
-            structured_results = []
-            for rank, result in enumerate(text_results, 1):
-                structured_results.append({
-                    'rank': rank,
-                    'score': 1.0,  # テキスト検索では類似度は固定
-                    'post': {
-                        'post_id': result['post_id'],
-                        'content': result['content'],
-                        'timestamp': result['timestamp'],
-                        'url': result['url'],
-                        'user': result['user']
-                    }
-                })
-            
-            return structured_results
-        
-        # ベクトル検索クエリをベクトル化
-        query_vector = self._embed_text(vector_query)
-        
-        # SearchEngineに類似検索を委譲（テキストフィルタリング付き）
-        results = self.search_engine.search_similar(query_vector, search_settings, text_filter)
+        # SearchEngineに類似検索を委譲
+        results = self.search_engine.search_similar(query, search_settings)
         
         # タプルのリストを構造化されたデータに変換
         structured_results = []

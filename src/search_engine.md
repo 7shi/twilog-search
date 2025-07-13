@@ -69,3 +69,13 @@
 **Problem**: `vector_search`メソッドでRPC通信用のchunk分割処理（Streaming Extensions対応）を実行していたため、内部APIとして使用する際にも不要な分割処理が実行され、処理が複雑化していた。
 
 **Solution**: SearchEngineの`vector_search`をフラットな`List[Tuple[int, float]]`を返すシンプルな内部APIに変更し、chunk分割処理をRPCレイヤー（twilog_server.py）に移動。内部では単純な配列として処理し、RPC通信時のみStreaming Extensions対応の分割処理を実行する責務分離を実現。これにより、SearchEngineは純粋な検索エンジンとして機能し、通信プロトコルの詳細から分離された。
+
+### ベクトル化機能の統合による自己完結性
+**Problem**: SearchEngineがベクトル化機能を持たず、TwilogServerに依存していたため、SearchEngine単体でのテストが困難で、責務の分散により再利用性が制限されていた。
+
+**Solution**: SearchEngineのコンストラクタで`embed_func`を受け取り、内部で`self._embed_text`として保持。`search_similar`と`vector_search`を文字列クエリを受け取るAPIに変更し、内部でV|T解析とベクトル化を実行。これにより、SearchEngineが完全に自己完結し、TwilogServerは純粋なRPCラッパーとなった。
+
+### ジェネレーターによるデータ差異吸収と処理統一化
+**Problem**: テキスト検索とベクトル検索で結果形式が異なり、同じフィルタリング処理（ユーザー・日付フィルタ・重複除去）が重複実装されていた。この重複により、保守性が低下し、バグ修正時に複数箇所の変更が必要だった。
+
+**Solution**: `_generate_text_results`と`_generate_vector_results`ジェネレーターを実装し、両方の検索結果を`(post_info, similarity)`形式で統一。`search_similar`内で単一のフィルタリングループを実行し、重複コードを完全排除。ジェネレーターによる遅延評価でメモリ効率も向上し、関数型プログラミングの合成概念をPythonで実現した革新的アーキテクチャを確立。詳細は[ジェネレーター統一化レポート](../docs/20250713-generator-unification.md)参照。

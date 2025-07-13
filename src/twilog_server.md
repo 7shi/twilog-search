@@ -121,3 +121,8 @@
 **Problem**: SearchEngineの`vector_search`メソッドでStreaming Extensions対応のchunk分割処理を実行していたため、内部API使用時に不要な分割処理が実行され、処理効率と設計の単純性が損なわれていた。
 
 **Solution**: chunk分割処理をSearchEngineからTwilogServerの`vector_search`メソッドに移動し、RPC通信レイヤーでのみ分割処理を実行する設計に変更。SearchEngineからフラットな配列を受け取り、twilog_server側で2万件ずつのchunk分割とStreaming Extensions形式（`{"streaming": chunks}`）への変換を実行。これにより、内部APIは単純な配列処理を維持し、RPC通信の要件（大容量データの分割送信）は通信レイヤーで解決する責務分離を実現した。
+
+### SearchEngineベクトル化統合による純粋なRPCラッパー化
+**Problem**: TwilogServerがSearchEngineからベクトル化機能を分離して保持していたため、相互参照による設計の不健全性が生じ、SearchEngine単体でのテストが困難になっていた。また、V|T解析やベクトル化処理がTwilogServer側に残存し、責務の分離が不完全だった。
+
+**Solution**: SearchEngineのコンストラクタに`self._embed_text`を渡し、SearchEngineを完全に自己完結させる設計に変更。`search_similar`と`vector_search`を文字列クエリを直接受け取るAPIに修正し、V|T解析・ベクトル化・フィルタリングのすべてをSearchEngine内部で実行。TwilogServerは純粋なRPCラッパーとなり、クエリ文字列とsettingsをそのまま委譲し、結果をRPC形式に変換するのみを担当。これにより、ロジックの一元化と明確な責務分離を実現した。
