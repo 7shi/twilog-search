@@ -2,7 +2,10 @@
 """
 安全なテキスト入力機能を提供するモジュール
 """
-import readline
+try:
+    import gnureadline as readline
+except:
+    import readline
 from datetime import datetime
 from typing import Optional
 from rich.console import Console
