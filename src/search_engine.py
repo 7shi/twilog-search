@@ -221,17 +221,17 @@ class SearchEngine:
         for result in text_results:
             yield result, 1.0
     
-    def _generate_vector_results(self, vector_query: str) -> Generator[Tuple[dict, float], None, None]:
+    def _generate_vector_results(self, query: str) -> Generator[Tuple[dict, float], None, None]:
         """
         ベクトル検索結果を(post_info, similarity)形式で生成
         
         Args:
-            vector_query: ベクトル検索クエリ
+            query: クエリ文字列（V|T形式対応）
             
         Yields:
             (post_info, similarity)のタプル
         """
-        all_results = self.vector_search(vector_query, top_k=None)
+        all_results = self.vector_search(query, top_k=None)
         for post_id, similarity in all_results:
             user = self.post_user_map.get(post_id, '')
             post_data = self.data_access.get_post_content([post_id]).get(post_id, {})
@@ -264,7 +264,7 @@ class SearchEngine:
                 raise ValueError("Empty query: both vector and text parts are empty")
             results_generator = self._generate_text_results(text_filter)
         else:
-            results_generator = self._generate_vector_results(vector_query)
+            results_generator = self._generate_vector_results(query)
         
         # 統一されたフィルタリングループ
         filtered_results = []
