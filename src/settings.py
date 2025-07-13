@@ -105,9 +105,21 @@ class UserFilterSettings:
         
         # includes/excludesは排他的
         if "includes" in self.filter_settings:
-            status_parts.append(f"includes ({len(self.filter_settings['includes'])}人)")
+            users = self.filter_settings['includes']
+            if len(users) <= 3:
+                user_list = ", ".join(users)
+                status_parts.append(f"includes: {user_list}")
+            else:
+                user_list = ", ".join(users[:3])
+                status_parts.append(f"includes: {user_list}...({len(users)}人)")
         elif "excludes" in self.filter_settings:
-            status_parts.append(f"excludes ({len(self.filter_settings['excludes'])}人)")
+            users = self.filter_settings['excludes']
+            if len(users) <= 3:
+                user_list = ", ".join(users)
+                status_parts.append(f"excludes: {user_list}")
+            else:
+                user_list = ", ".join(users[:3])
+                status_parts.append(f"excludes: {user_list}...({len(users)}人)")
         
         # threshold系は組み合わせ可能
         if "threshold_min" in self.filter_settings:
