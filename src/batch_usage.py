@@ -12,6 +12,36 @@ from typing import Dict, Any, List, Optional, Tuple
 # クエリファイルのキャッシュ
 query_cache = {}
 
+# Gemini API 料金設定（100万トークンあたりの米ドル）
+PRICING = {
+    'input_per_million': 0.10,    # テキスト、画像、動画
+    'output_per_million': 0.40    # 思考トークンを含む
+}
+
+
+def calculate_cost(usage_stats: Dict[str, Any]) -> Dict[str, float]:
+    """
+    使用統計から料金を計算する
+    """
+    prompt_tokens = usage_stats.get('prompt_tokens', 0)
+    candidates_tokens = usage_stats.get('candidates_tokens', 0)
+    thoughts_tokens = usage_stats.get('thoughts_tokens', 0)
+    
+    # 入力コスト（プロンプトトークン）
+    input_cost = (prompt_tokens / 1_000_000) * PRICING['input_per_million']
+    
+    # 出力コスト（候補トークン + 思考トークン）
+    output_cost = ((candidates_tokens + thoughts_tokens) / 1_000_000) * PRICING['output_per_million']
+    
+    # 総コスト
+    total_cost = input_cost + output_cost
+    
+    return {
+        'input_cost': input_cost,
+        'output_cost': output_cost,
+        'total_cost': total_cost
+    }
+
 
 def check_usage_metadata_structure(usage_metadata: Dict[str, Any], response_data: Dict[str, Any]) -> List[str]:
     """
@@ -132,7 +162,14 @@ def analyze_query_response_pair(query_file_path: str, show_content: bool = False
         'errors': [],
         'structure_violations': [],
         'error_lines': [],
-        'key_mismatches': []
+        'key_mismatches': [],
+        'usage_stats': {
+            'total_tokens': 0,
+            'prompt_tokens': 0,
+            'candidates_tokens': 0,
+            'thoughts_tokens': 0,
+            'modality_stats': {}
+        }
     }
     
     # クエリファイルとレスポンスファイルのパスを取得
@@ -240,6 +277,22 @@ def analyze_query_response_pair(query_file_path: str, show_content: bool = False
                 results['error_lines'].append((line_num, line_content))
         else:
             results['valid_lines'] += 1
+            
+            # 有効な行のusageMetadataを集計
+            results['usage_stats']['total_tokens'] += usage_metadata.get('totalTokenCount', 0)
+            results['usage_stats']['prompt_tokens'] += usage_metadata.get('promptTokenCount', 0)
+            results['usage_stats']['candidates_tokens'] += usage_metadata.get('candidatesTokenCount', 0)
+            results['usage_stats']['thoughts_tokens'] += usage_metadata.get('thoughtsTokenCount', 0)
+            
+            # promptTokensDetailsの集計
+            if 'promptTokensDetails' in usage_metadata:
+                for detail in usage_metadata['promptTokensDetails']:
+                    if isinstance(detail, dict) and 'modality' in detail and 'tokenCount' in detail:
+                        modality = detail['modality']
+                        token_count = detail['tokenCount']
+                        if modality not in results['usage_stats']['modality_stats']:
+                            results['usage_stats']['modality_stats'][modality] = 0
+                        results['usage_stats']['modality_stats'][modality] += token_count
     
     return results
 
@@ -254,6 +307,11 @@ def main():
         nargs="+",
         help="分析対象のクエリJSONLファイルパス（複数可）"
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="ブロックされた行の詳細を表示"
+    )
     
     args = parser.parse_args()
     
@@ -267,7 +325,14 @@ def main():
         'blocked_details': [],
         'errors': [],
         'structure_violations': [],
-        'error_lines': []
+        'error_lines': [],
+        'usage_stats': {
+            'total_tokens': 0,
+            'prompt_tokens': 0,
+            'candidates_tokens': 0,
+            'thoughts_tokens': 0,
+            'modality_stats': {}
+        }
     }
     
     for query_file in args.query_files:
@@ -285,6 +350,18 @@ def main():
         all_results['error_lines'].extend(results['error_lines'])
         all_results['key_mismatches'] = all_results.get('key_mismatches', [])
         all_results['key_mismatches'].extend(results['key_mismatches'])
+        
+        # 使用統計をマージ
+        all_results['usage_stats']['total_tokens'] += results['usage_stats']['total_tokens']
+        all_results['usage_stats']['prompt_tokens'] += results['usage_stats']['prompt_tokens']
+        all_results['usage_stats']['candidates_tokens'] += results['usage_stats']['candidates_tokens']
+        all_results['usage_stats']['thoughts_tokens'] += results['usage_stats']['thoughts_tokens']
+        
+        # モダリティ統計をマージ
+        for modality, count in results['usage_stats']['modality_stats'].items():
+            if modality not in all_results['usage_stats']['modality_stats']:
+                all_results['usage_stats']['modality_stats'][modality] = 0
+            all_results['usage_stats']['modality_stats'][modality] += count
         
         if len(args.query_files) > 1:
             file_name = Path(query_file).name
@@ -323,8 +400,8 @@ def main():
             print(f"  - {violation}")
         print()
     
-    # ブロック詳細を表示
-    if results['blocked_details']:
+    # ブロック詳細を表示（--verboseオプション時のみ）
+    if args.verbose and results['blocked_details']:
         print("ブロックされた行の詳細:")
         for detail in results['blocked_details']:
             file_name = Path(detail['file_path']).name
@@ -335,6 +412,16 @@ def main():
             if detail['response']:
                 print()
                 print(detail['response'])
+        print()
+    
+    # 使用統計の表示
+    if results['usage_stats']['total_tokens'] > 0:
+        # 料金計算
+        cost_info = calculate_cost(results['usage_stats'])
+        results['usage_stats']['cost_usd'] = cost_info
+        
+        print("使用統計:")
+        print(json.dumps(results['usage_stats'], ensure_ascii=False, indent=2))
         print()
     
     # 成功率の計算
