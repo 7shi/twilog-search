@@ -86,6 +86,54 @@ def check_usage_metadata_structure(usage_metadata: Dict[str, Any], response_data
                 elif not isinstance(detail['modality'], str):
                     errors.append(f"promptTokensDetails[{i}].modality は文字列である必要があります")
     
+    # candidatesの構造チェック（ブロックされていない場合）
+    if not is_blocked and len(errors) == 0:
+        if 'candidates' not in response_data:
+            errors.append("必須フィールド 'candidates' が存在しません")
+        else:
+            candidates = response_data['candidates']
+            if not isinstance(candidates, list):
+                errors.append("'candidates' は配列である必要があります")
+            elif len(candidates) != 1:
+                errors.append(f"'candidates' の要素数は1である必要があります（実際: {len(candidates)}）")
+            else:
+                candidate = candidates[0]
+                if not isinstance(candidate, dict):
+                    errors.append("candidates[0] は辞書である必要があります")
+                else:
+                    # contentの存在チェック
+                    if 'content' not in candidate:
+                        errors.append("candidates[0] に 'content' がありません")
+                    else:
+                        content = candidate['content']
+                        if not isinstance(content, dict):
+                            errors.append("candidates[0].content は辞書である必要があります")
+                        else:
+                            # partsの存在チェック
+                            if 'parts' not in content:
+                                errors.append("candidates[0].content に 'parts' がありません")
+                            else:
+                                parts = content['parts']
+                                if not isinstance(parts, list):
+                                    errors.append("candidates[0].content.parts は配列である必要があります")
+                                elif len(parts) != 1:
+                                    errors.append(f"candidates[0].content.parts の要素数は1である必要があります（実際: {len(parts)}）")
+                                else:
+                                    part = parts[0]
+                                    if not isinstance(part, dict):
+                                        errors.append("candidates[0].content.parts[0] は辞書である必要があります")
+                                    else:
+                                        # textフィールドの存在チェック
+                                        if 'text' not in part:
+                                            errors.append("candidates[0].content.parts[0] に 'text' がありません")
+                                        elif not isinstance(part['text'], str):
+                                            errors.append("candidates[0].content.parts[0].text は文字列である必要があります")
+                                        
+                                        # textフィールド以外の余分なフィールドチェック
+                                        if set(part.keys()) != {'text'}:
+                                            extra_fields = set(part.keys()) - {'text'}
+                                            errors.append(f"candidates[0].content.parts[0] に余分なフィールド: {sorted(extra_fields)}")
+    
     # トークン数の整合性チェック
     if len(errors) == 0:  # 基本構造に問題がない場合のみ
         total = usage_metadata.get('totalTokenCount', 0)
