@@ -70,4 +70,9 @@
 ### @rpc_methodデコレーターによる継承クライアントセキュリティ統一
 **Problem**: 基底クラス（EmbedClient）の`@rpc_method`デコレーター導入により、継承クライアント（TwilogClient）でも統一されたセキュリティモデルが必要になった。また、TwilogCommand側でも同様のセキュリティ制御が必要だった。
 
-**Solution**: TwilogClientの全RPCメソッド（`vector_search`、`search_similar`、`get_user_stats`、`get_database_stats`、`search_posts_by_text`）とTwilogCommandの対応するコマンドメソッドに`@rpc_method`デコレーターを追加。基底クラスの`execute`メソッドで実行される`_is_rpc_method`チェックにより、明示的にマークされたメソッドのみが呼び出し可能になり、継承階層全体で統一されたセキュリティが確保された。
+**Solution**: TwilogClientの全RPCメソッド（`vector_search`、`search_similar`、`get_user_stats`、`get_database_stats`、`search_posts_by_text`、`suggest_users`）とTwilogCommandの対応するコマンドメソッドに`@rpc_method`デコレーターを追加。基底クラスの`execute`メソッドで実行される`_is_rpc_method`チェックにより、明示的にマークされたメソッドのみが呼び出し可能になり、継承階層全体で統一されたセキュリティが確保された。
+
+### レーベンシュタイン距離による類似ユーザー検索機能
+**Problem**: ユーザー名入力時のタイポや表記ゆれに対する支援機能が不足しており、存在しないユーザーが指定された場合に適切な候補提案ができず、ユーザー体験が低下していた。特にユーザーフィルタリング設定時に正確なユーザー名を覚えていない場合の操作性が課題だった。
+
+**Solution**: `suggest_users`メソッドを実装し、TwilogServerのレーベンシュタイン距離計算APIとの連携により類似ユーザー提案機能を提供。ユーザー名リストを送信し、存在しないユーザーに対して上位5人の類似候補を受け取る仕組みを構築。CLIコマンドでは`suggest_users user1 user2 unknownuser`形式で複数ユーザーを一括チェック可能とし、存在しないユーザーのみに対して類似候補を表示。タイポ修正支援により検索・フィルタリング機能の使いやすさを向上。

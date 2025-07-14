@@ -125,6 +125,7 @@ class TwilogDataAccess:
         """CSVファイルのURLからユーザー情報を抽出する"""
         self.post_user_map = {}
         self.user_post_counts = {}
+        self.user_list = []
         
         for post_id, post_data in self.posts_data.items():
             url = post_data['url']
@@ -138,15 +139,18 @@ class TwilogDataAccess:
                     if str(post_id) == extracted_post_id:
                         self.post_user_map[post_id] = user
                         self.user_post_counts[user] = self.user_post_counts.get(user, 0) + 1
+        
+        # ユーザーリストを生成
+        self.user_list = list(self.user_post_counts.keys())
     
-    def load_user_data(self) -> Tuple[Dict[int, str], Dict[str, int]]:
+    def load_user_data(self) -> Tuple[Dict[int, str], Dict[str, int], List[str]]:
         """
         ユーザー情報を読み込む
         
         Returns:
-            (post_user_map, user_post_counts): 投稿ID→ユーザー名マップとユーザー別投稿数
+            (post_user_map, user_post_counts, user_list): 投稿ID→ユーザー名マップとユーザー別投稿数とユーザーリスト
         """
-        return self.post_user_map, self.user_post_counts
+        return self.post_user_map, self.user_post_counts, self.user_list
     
     def get_post_content(self, post_ids: List[int]) -> Dict[int, Dict[str, str]]:
         """

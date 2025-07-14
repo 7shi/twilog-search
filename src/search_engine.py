@@ -2,7 +2,7 @@
 """
 Twilogベクトル検索エンジン
 """
-from typing import List, Tuple, Generator, Any, Optional, Callable
+from typing import List, Dict, Tuple, Generator, Any, Optional, Callable
 from pathlib import Path
 from settings import SearchSettings
 from data_csv import TwilogDataAccess
@@ -38,6 +38,7 @@ class SearchEngine:
         self.data_access: Optional[TwilogDataAccess] = None
         self.post_user_map: dict = {}
         self.user_post_counts: dict = {}
+        self.user_list: List[str] = []
         self.post_ids: List[int] = []
         self.vectors: Optional[Any] = None
     
@@ -76,7 +77,7 @@ class SearchEngine:
         self.data_access = TwilogDataAccess(self.csv_path)
         
         # ユーザー情報の読み込み
-        self.post_user_map, self.user_post_counts = self.data_access.load_user_data()
+        self.post_user_map, self.user_post_counts, self.user_list = self.data_access.load_user_data()
         
         # 初期化完了フラグ
         self.initialized = True
@@ -390,3 +391,36 @@ class SearchEngine:
         results.sort(key=lambda x: x["timestamp"], reverse=True)
         
         return results[:limit]
+    
+    def suggest_users(self, user_list: List[str]) -> Dict[str, List[str]]:
+        """
+        ユーザーのリストを受け取って存在しないユーザーに対してレーベンシュタイン距離で類似ユーザーを提案
+        
+        Args:
+            user_list: チェック対象のユーザー名リスト
+            
+        Returns:
+            存在しないユーザー名をキーとし、類似ユーザー上位5人をリストとする辞書
+        """
+        import Levenshtein
+        
+        # 存在しないユーザーを特定
+        missing_users = [user for user in user_list if user not in self.user_post_counts]
+        
+        result = {}
+        
+        for missing_user in missing_users:
+            # 全ユーザーとのレーベンシュタイン類似度を計算
+            similarities = []
+            for existing_user in self.user_list:
+                ratio = Levenshtein.ratio(missing_user, existing_user)
+                similarities.append((existing_user, ratio))
+            
+            # 類似度の降順でソート
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            # 上位5人を抽出
+            top_5 = [user for user, _ in similarities[:5]]
+            result[missing_user] = top_5
+        
+        return result

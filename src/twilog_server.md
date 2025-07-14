@@ -130,4 +130,9 @@
 ### RPC引数形式の自然な統一化とセキュリティ強化
 **Problem**: 基底クラス（embed_server.py）の`params: dict = None`形式から継承したメソッドシグネチャが不明確で、IDEでの型推論や補完機能が効果的に機能していなかった。また、動的メソッド呼び出しにより意図しないメソッドがRPC経由でアクセス可能になるセキュリティリスクが存在していた。
 
-**Solution**: 各RPCメソッドを自然な引数形式に変更し、基底クラスの`@rpc_method`デコレーターを継承してセキュリティを強化。`vector_search(query: str, top_k: int = None)`、`search_similar(query: str, settings: dict = None)`、`get_user_stats(limit: int = 50)`、`search_posts_by_text(search_term: str, limit: int = 50)`として明確なメソッドシグネチャを確立。デコレーターにより明示的にマークされたメソッドのみがRPC経由で呼び出し可能となり、APIの安全性と開発効率を両立。
+**Solution**: 各RPCメソッドを自然な引数形式に変更し、基底クラスの`@rpc_method`デコレーターを継承してセキュリティを強化。`vector_search(query: str, top_k: int = None)`、`search_similar(query: str, settings: dict = None)`、`get_user_stats(limit: int = 50)`、`search_posts_by_text(search_term: str, limit: int = 50)`、`suggest_users(user_list: list)`として明確なメソッドシグネチャを確立。デコレーターにより明示的にマークされたメソッドのみがRPC経由で呼び出し可能となり、APIの安全性と開発効率を両立。
+
+### レーベンシュタイン距離による類似ユーザー検索API
+**Problem**: ユーザー名入力支援機能が不足しており、タイポや表記ゆれが発生した場合に適切な候補提案ができず、ユーザー体験の向上が困難だった。また、SearchEngineで実装された類似ユーザー検索機能をRPC経由で利用するためのAPIが不足していた。
+
+**Solution**: `suggest_users`RPCメソッドを実装し、SearchEngineの`suggest_users`機能をWebSocket経由で提供。ユーザー名リストを受け取り、存在しないユーザーに対してレーベンシュタイン距離による類似ユーザー上位5人を返却。入力バリデーション（空リスト・型チェック）を実装し、不正なリクエストを適切に遮断。クライアント・MCP両方から利用可能な統一APIとして、ユーザー名入力支援機能をサーバー側で一元提供する設計を実現。

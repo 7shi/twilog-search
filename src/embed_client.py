@@ -63,19 +63,20 @@ class BaseEmbedClient():
                 
                 # JSON-RPCレスポンスの処理
                 if response_data.get("jsonrpc") != "2.0":
-                    return {"error": "サーバーがJSON-RPC 2.0形式に対応していません"}
+                    raise RuntimeError("サーバーがJSON-RPC 2.0形式に対応していません")
                 if response_data.get("id") != id:
-                    return {"error": "不正なリクエストIDのレスポンスを受信しました"}
+                    raise RuntimeError("不正なリクエストIDのレスポンスを受信しました")
                 if "error" in response_data:
-                    return {"error": response_data["error"]["message"]}
+                    error = response_data["error"]
+                    raise RuntimeError(f'[{error["code"]}] {error["message"]}')
                 if "result" not in response_data:
-                    return {"error": "Invalid JSON-RPC response"}
+                    raise RuntimeError("Invalid JSON-RPC response")
                 
                 # 分割送信かを確認
                 more = response_data.get("more")
                 if more is None:
                     if results:
-                        return {"error": "サーバーからのレスポンスに'more'フィールドがありません"}
+                        raise RuntimeError("サーバーからのレスポンスに'more'フィールドがありません")
                     else:
                         return response_data["result"]
 
@@ -89,21 +90,9 @@ class BaseEmbedClient():
             # 分割送信の結果を返す
             return results
             
-        except asyncio.TimeoutError:
-            return {"error": "サーバーへの接続がタイムアウトしました"}
-        except ConnectionRefusedError:
-            return {"error": "サーバーが起動していません"}
-        except Exception as e:
-            return {"error": f"通信エラー: {e}"}
-            
         finally:
             if websocket:
                 await websocket.close()
-    
-    def is_success(self, response: Dict[str, Any]) -> bool:
-        """レスポンスが成功かどうかを判定"""
-        return "error" not in response
-
 
 class EmbedClient(BaseEmbedClient):
     """基本的な埋め込みクライアント実装"""
@@ -123,20 +112,6 @@ class EmbedClient(BaseEmbedClient):
         """サーバーを停止"""
         return await self._send_request("stop_server")
     
-    def _extract_vector_data(self, response: Dict[str, Any]) -> Optional[str]:
-        """ベクトルデータを抽出"""
-        if self.is_success(response) and "vector" in response:
-            return response["vector"]
-        return None
-    
-    def _decode_vector_size(self, vector_data: str) -> Optional[int]:
-        """Base64ベクトルデータのサイズを取得"""
-        try:
-            decoded_data = base64.b64decode(vector_data)
-            return len(decoded_data)
-        except Exception:
-            return None
-    
     @rpc_method
     async def embed_text(self, text: str) -> Dict[str, Any]:
         """クエリをベクトル化"""
@@ -149,19 +124,16 @@ class EmbedClient(BaseEmbedClient):
         
         result = await self.embed_text(query)
         
-        if not self.is_success(result):
-            print(f"エラー: {result['error']}")
-            return
+        vector_data = result.get("vector")
+        if not vector_data:
+            raise RuntimeError(f"予期しないレスポンス: {result}")
         
-        vector_data = self._extract_vector_data(result)
-        if vector_data:
-            decoded_size = self._decode_vector_size(vector_data)
-            print(f"ベクトル化成功!")
-            print(f"Base64データ（先頭20文字）: {vector_data[:20]}")
-            print(f"Base64データ長: {len(vector_data)}文字")
-            print(f"デコード後サイズ: {decoded_size}バイト" if decoded_size else "デコード後サイズ: デコードエラー")
-        else:
-            print(f"予期しないレスポンス: {result}")
+        decoded_data = base64.b64decode(vector_data)
+        decoded_size = len(decoded_data)
+        print(f"ベクトル化成功!")
+        print(f"Base64データ（先頭20文字）: {vector_data[:20]}")
+        print(f"Base64データ長: {len(vector_data)}文字")
+        print(f"デコード後サイズ: {decoded_size}バイト")
 
 
 class EmbedCommand:

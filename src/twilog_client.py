@@ -138,6 +138,23 @@ class TwilogClient(EmbedClient):
         if limit is not None:
             params["limit"] = limit
         return await self._send_request("search_posts_by_text", params)
+    
+    @rpc_method
+    async def suggest_users(self, user_list: list) -> dict:
+        """
+        存在しないユーザーに対して類似ユーザーを提案
+        
+        Args:
+            user_list: チェック対象のユーザー名リスト
+            
+        Returns:
+            存在しないユーザー名をキーとし、類似ユーザー上位5人をリストとする辞書
+            
+        Raises:
+            RuntimeError: サーバーエラーまたは通信エラー
+        """
+        params = {"user_list": user_list}
+        return await self._send_request("suggest_users", params)
 
 
 class TwilogCommand(EmbedCommand):
@@ -181,6 +198,10 @@ class TwilogCommand(EmbedCommand):
             text_search_parser = subparsers.add_parser('search_posts_by_text', help='テキスト検索を実行')
             text_search_parser.add_argument('search_term', help='検索文字列')
             text_search_parser.add_argument('-l', '--limit', type=int, help='取得件数制限')
+            
+            # suggest_users command
+            suggest_parser = subparsers.add_parser('suggest_users', help='類似ユーザーを提案')
+            suggest_parser.add_argument('users', nargs='+', help='チェック対象のユーザー名（スペース区切り）')
         
         return parser
     
@@ -241,6 +262,20 @@ class TwilogCommand(EmbedCommand):
             timestamp = post.get('timestamp', '')
             print(f"{i:2d}. @{user} [{timestamp}]")
             print(f"    {content}...")
+    
+    @rpc_method
+    async def suggest_users(self, args) -> None:
+        """suggest_usersコマンドの処理"""
+        results = await self.client.suggest_users(args.users)
+        if not results:
+            print("すべてのユーザーが存在します")
+            return
+        
+        print(f"存在しないユーザー: {len(results)}人")
+        for missing_user, suggestions in results.items():
+            print(f"\n'{missing_user}' の類似ユーザー:")
+            for i, suggested_user in enumerate(suggestions, 1):
+                print(f"  {i}. {suggested_user}")
 
 
 async def main():
