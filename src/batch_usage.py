@@ -78,46 +78,6 @@ def check_usage_metadata_structure(usage_metadata: Dict[str, Any], response_data
     return errors
 
 
-def print_errors_and_violations(results: Dict[str, Any], show_content: bool = False) -> None:
-    """
-    エラーと構造違反を表示する
-    """
-    if results['errors']:
-        print("エラー:")
-        for error in results['errors']:
-            print(f"  - {error}")
-        print()
-    
-    if results['structure_violations']:
-        print("構造違反:")
-        for violation in results['structure_violations']:
-            print(f"  - {violation}")
-        print()
-    
-    # エラーがある行の内容を表示
-    if show_content and results['error_lines']:
-        print("エラーがある行の内容:")
-        for line_num, content in results['error_lines']:
-            print(f"  行{line_num}: {content}")
-        print()
-
-
-def print_blocked_details(results: Dict[str, Any]) -> None:
-    """
-    ブロックされた行の詳細を表示する
-    """
-    if results['blocked_details']:
-        print("ブロックされた行の詳細:")
-        for detail in results['blocked_details']:
-            file_name = Path(detail['file_path']).name
-            print(f"\n  {file_name}:行{detail['line_number']} - {detail['block_reason']}")
-            if detail['query']:
-                print(f"    クエリ: {detail['query']}")
-            if detail['response']:
-                print(f"    レスポンス: {detail['response']}")
-        print()
-
-
 def load_jsonl_as_dict(file_path: str) -> Dict[str, Any]:
     """
     JSONLファイルを読み込み、key→dictのマッピングを作成する
@@ -138,40 +98,29 @@ def load_jsonl_as_dict(file_path: str) -> Dict[str, Any]:
     return result
 
 
-def get_query_dict(result_file_path: str) -> Dict[str, Any]:
+def get_response_file_path(query_file_path: str) -> str:
     """
-    クエリファイルをキャッシュ付きで読み込む
+    クエリファイルパスからレスポンスファイルパスを取得する
     """
-    if result_file_path in query_cache:
-        return query_cache[result_file_path]
-    
-    result_path = Path(result_file_path)
-    query_file = result_path.parent.parent / result_path.name
-    
-    if query_file.exists():
-        query_dict = load_jsonl_as_dict(str(query_file))
-        query_cache[result_file_path] = query_dict
-        return query_dict
-    
-    return {}
+    query_path = Path(query_file_path)
+    return str(query_path.parent / "results" / query_path.name)
 
 
-def get_query_from_parent_dir(result_file_path: str, result_key: str) -> Optional[str]:
+def get_query_content(query_dict: Dict[str, Any], key: str) -> Optional[str]:
     """
-    結果ファイルの親ディレクトリから対応するクエリファイルを読み取り、keyが一致するクエリを返す
+    クエリ辞書から指定されたキーのクエリ内容を取得する
     """
     try:
-        query_dict = get_query_dict(result_file_path)
-        if result_key in query_dict:
-            return json.dumps(query_dict[result_key], ensure_ascii=False)
-        return f"key {result_key} が見つかりません"
+        if key in query_dict:
+            return json.dumps(query_dict[key], ensure_ascii=False)
+        return f"key {key} が見つかりません"
     except Exception as e:
         return f"クエリ取得エラー: {str(e)}"
 
 
-def analyze_jsonl_file(file_path: str, show_content: bool = False) -> Dict[str, Any]:
+def analyze_query_response_pair(query_file_path: str, show_content: bool = False) -> Dict[str, Any]:
     """
-    JSONLファイルを解析してusageMetadataの構造をチェックする
+    クエリファイルと対応するレスポンスファイルを解析してusageMetadataの構造をチェックする
     """
     results = {
         'total_lines': 0,
@@ -182,16 +131,40 @@ def analyze_jsonl_file(file_path: str, show_content: bool = False) -> Dict[str, 
         'blocked_details': [],
         'errors': [],
         'structure_violations': [],
-        'error_lines': []
+        'error_lines': [],
+        'key_mismatches': []
     }
     
-    # レスポンスファイルをkey→dictのマッピングとして読み込む
-    response_dict = load_jsonl_as_dict(file_path)
+    # クエリファイルとレスポンスファイルのパスを取得
+    response_file_path = get_response_file_path(query_file_path)
     
-    # 行番号付きでファイルを再読み込み（表示用）
+    # クエリファイルを読み込む
+    query_dict = load_jsonl_as_dict(query_file_path)
+    if not query_dict:
+        results['errors'].append(f"クエリファイルが読み込めません: {query_file_path}")
+        return results
+    
+    # レスポンスファイルを読み込む
+    response_dict = load_jsonl_as_dict(response_file_path)
+    if not response_dict:
+        results['errors'].append(f"レスポンスファイルが読み込めません: {response_file_path}")
+        return results
+    
+    # キーの過不足チェック
+    query_keys = set(query_dict.keys())
+    response_keys = set(response_dict.keys())
+    missing_in_response = query_keys - response_keys
+    extra_in_response = response_keys - query_keys
+    
+    if missing_in_response:
+        results['key_mismatches'].append(f"レスポンスに存在しないキー: {sorted(missing_in_response)}")
+    if extra_in_response:
+        results['key_mismatches'].append(f"クエリに存在しないキー: {sorted(extra_in_response)}")
+    
+    # レスポンスファイルの行番号付きマッピング作成
     line_mapping = {}
     try:
-        with open(file_path, 'r', encoding='utf-8') as f:
+        with open(response_file_path, 'r', encoding='utf-8') as f:
             for line_num, line in enumerate(f, 1):
                 results['total_lines'] += 1
                 
@@ -214,9 +187,9 @@ def analyze_jsonl_file(file_path: str, show_content: bool = False) -> Dict[str, 
                         results['error_lines'].append((line_num, line.strip()))
     
     except FileNotFoundError:
-        results['errors'].append(f"ファイルが見つかりません: {file_path}")
+        results['errors'].append(f"レスポンスファイルが見つかりません: {response_file_path}")
     except Exception as e:
-        results['errors'].append(f"ファイル読み込みエラー: {str(e)}")
+        results['errors'].append(f"レスポンスファイル読み込みエラー: {str(e)}")
     
     # dictベースでの分析
     for key, data in response_dict.items():
@@ -250,13 +223,13 @@ def analyze_jsonl_file(file_path: str, show_content: bool = False) -> Dict[str, 
         if 'promptFeedback' in response_data and 'blockReason' in response_data['promptFeedback']:
             results['blocked_lines'] += 1
             block_reason = response_data['promptFeedback']['blockReason']
-            query = get_query_from_parent_dir(file_path, key)
+            query = get_query_content(query_dict, key)
             results['blocked_details'].append({
                 'line_number': line_num,
                 'block_reason': block_reason,
                 'query': query,
                 'response': line_content,
-                'file_path': file_path
+                'file_path': response_file_path
             })
         
         if structure_errors:
@@ -277,9 +250,9 @@ def main():
         description="バッチ結果のusageMetadata構造をチェックするスクリプト"
     )
     parser.add_argument(
-        "jsonl_files",
+        "query_files",
         nargs="+",
-        help="分析対象のJSONLファイルパス（複数可）"
+        help="分析対象のクエリJSONLファイルパス（複数可）"
     )
     
     args = parser.parse_args()
@@ -297,8 +270,8 @@ def main():
         'error_lines': []
     }
     
-    for jsonl_file in args.jsonl_files:
-        results = analyze_jsonl_file(jsonl_file, False)
+    for query_file in args.query_files:
+        results = analyze_query_response_pair(query_file, False)
         
         # 結果をマージ
         all_results['total_lines'] += results['total_lines']
@@ -310,16 +283,19 @@ def main():
         all_results['errors'].extend(results['errors'])
         all_results['structure_violations'].extend(results['structure_violations'])
         all_results['error_lines'].extend(results['error_lines'])
+        all_results['key_mismatches'] = all_results.get('key_mismatches', [])
+        all_results['key_mismatches'].extend(results['key_mismatches'])
         
-        if len(args.jsonl_files) > 1:
-            file_name = Path(jsonl_file).name
-            print(f"{file_name}: {results['total_lines']} 行, 有効 {results['valid_lines']}, 無効 {results['invalid_lines']}, 思考 {results['thoughts_lines']}, ブロック {results['blocked_lines']}")
+        if len(args.query_files) > 1:
+            file_name = Path(query_file).name
+            key_mismatch_info = f", キー不一致 {len(results['key_mismatches'])}" if results['key_mismatches'] else ""
+            print(f"{file_name}: {results['total_lines']} 行, 有効 {results['valid_lines']}, 無効 {results['invalid_lines']}, 思考 {results['thoughts_lines']}, ブロック {results['blocked_lines']}{key_mismatch_info}")
     
     results = all_results
     
     # 結果の表示
     print()
-    print(f"ファイル数: {len(args.jsonl_files)}")
+    print(f"ファイル数: {len(args.query_files)}")
     print(f"総行数: {results['total_lines']}")
     print(f"有効な行数: {results['valid_lines']}")
     print(f"無効な行数: {results['invalid_lines']}")
@@ -327,9 +303,39 @@ def main():
     print(f"ブロックされた行数: {results['blocked_lines']}")
     print()
     
-    # エラー詳細とブロック詳細を表示
-    print_errors_and_violations(results, False)
-    print_blocked_details(results)
+    # キー不一致の表示
+    if results.get('key_mismatches'):
+        print("キー不一致:")
+        for mismatch in results['key_mismatches']:
+            print(f"  - {mismatch}")
+        print()
+    
+    # エラー詳細を表示
+    if results['errors']:
+        print("エラー:")
+        for error in results['errors']:
+            print(f"  - {error}")
+        print()
+    
+    if results['structure_violations']:
+        print("構造違反:")
+        for violation in results['structure_violations']:
+            print(f"  - {violation}")
+        print()
+    
+    # ブロック詳細を表示
+    if results['blocked_details']:
+        print("ブロックされた行の詳細:")
+        for detail in results['blocked_details']:
+            file_name = Path(detail['file_path']).name
+            print(f"\n{file_name}:行{detail['line_number']} - {detail['block_reason']}")
+            if detail['query']:
+                print()
+                print(detail['query'])
+            if detail['response']:
+                print()
+                print(detail['response'])
+        print()
     
     # 成功率の計算
     if results['total_lines'] > 0:
@@ -337,7 +343,8 @@ def main():
         print(f"構造適合率: {success_rate:.2f}%")
     
     # 終了コード
-    sys.exit(0 if results['invalid_lines'] == 0 else 1)
+    has_errors = results['invalid_lines'] > 0 or results.get('key_mismatches', [])
+    sys.exit(0 if not has_errors else 1)
 
 
 if __name__ == "__main__":
