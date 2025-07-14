@@ -3,13 +3,177 @@
 設定UI機能を提供するモジュール
 """
 
+import asyncio
 from rich.console import Console
 from simple_term_menu import TerminalMenu
 from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_no_menu
 from settings import UserFilterSettings, DateFilterSettings, TopKSettings
 
 
-def show_user_filter_menu(settings: UserFilterSettings):
+def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_users_func) -> str:
+    """
+    ユーザー候補選択メニューを表示（ループ形式）
+    
+    Args:
+        missing_user: 存在しないユーザー名
+        suggestions: 類似ユーザー候補のリスト
+        suggest_users_func: suggest_users関数オブジェクト
+        
+    Returns:
+        選択されたユーザー名、または None（キャンセル）、または "DELETE"（削除）
+    """
+    console = Console()
+    current_user = missing_user
+    current_suggestions = suggestions
+    
+    while True:
+        console.print(f"\n[yellow]ユーザー '{current_user}' が見つかりません[/yellow]")
+        
+        # 選択肢を構築
+        options = []
+        has_suggestions = current_suggestions is not None and len(current_suggestions) > 0
+        
+        if not has_suggestions:
+            if current_suggestions is None:
+                console.print("[red]候補が取得できませんでした[/red]")
+            else:
+                console.print("[red]類似ユーザーの候補がありません[/red]")
+            suggestion_count = 0
+        else:
+            # 候補がある場合は通常の選択肢
+            for i, user in enumerate(current_suggestions, 1):
+                options.append(f"[{i}] {user}")
+            suggestion_count = len(current_suggestions)
+        
+        # 特別な選択肢を追加
+        options.append(f"[{suggestion_count + 1}] 直接入力")
+        options.append(f"[{suggestion_count + 2}] 削除")
+        
+        terminal_menu = TerminalMenu(
+            options,
+            title=f"'{current_user}' の代替候補を選択してください (↑↓: 移動, Enter: 決定, Esc: キャンセル):",
+            show_search_hint=True
+        )
+        
+        choice_index = terminal_menu.show()
+        
+        if choice_index is None:
+            return None  # Escキャンセル
+        elif choice_index < suggestion_count:
+            selected_user = current_suggestions[choice_index]
+            console.print(f"[green]'{selected_user}' を選択しました[/green]")
+            return selected_user  # 候補ユーザーを選択
+        elif choice_index == suggestion_count:
+            # 直接入力
+            new_user = safe_text_input(f"'{current_user}' の代わりに使用するユーザー名を入力: ", "user")
+            if new_user is None or new_user.strip() == "":
+                # 空欄またはCtrl+Dの場合、メニューに戻る（continueでループ継続）
+                continue
+            
+            new_user = new_user.strip()
+            
+            # 新しいユーザー名で再度suggest_usersを呼び出し
+            if suggest_users_func is not None:
+                try:
+                    suggestions_result = asyncio.run(suggest_users_func([new_user]))
+                    if new_user in suggestions_result:
+                        # 新しいユーザーも存在しない場合、候補を更新してループ継続
+                        current_user = new_user
+                        current_suggestions = suggestions_result[new_user]
+                        continue
+                    else:
+                        # 新しいユーザーが存在する場合
+                        console.print(f"[green]'{new_user}' を選択しました[/green]")
+                        return new_user
+                except Exception as e:
+                    console.print(f"[red]ユーザー候補取得エラー: {e}[/red]")
+                    # エラー時は候補を取得できなかった状態でループ継続
+                    current_user = new_user
+                    current_suggestions = None
+                    continue
+            else:
+                # suggest_users_funcが提供されていない場合はそのまま使用
+                console.print(f"[green]'{new_user}' を選択しました[/green]")
+                return new_user
+        else:
+            return "DELETE"  # 削除を選択
+
+
+def _handle_user_input_with_suggestions(
+    prompt: str, 
+    history: str, 
+    suggest_users_func, 
+    current_users_func, 
+    filter_type: str
+) -> tuple:
+    """
+    ユーザー入力を処理し、存在しないユーザーに対して候補を表示
+    
+    Args:
+        prompt: 入力プロンプト
+        history: 履歴キー
+        suggest_users_func: suggest_users関数オブジェクト
+        current_users_func: 現在の設定値を取得する関数
+        filter_type: フィルタータイプ（"includes" or "excludes"）
+        
+    Returns:
+        (success: bool, users: list or None)
+    """
+    users_input = safe_text_input(prompt, history)
+    
+    if users_input is None:
+        return False, None  # Ctrl+Dの場合
+    elif users_input.strip():
+        users = [user.strip() for user in users_input.split(',') if user.strip()]
+        
+        # suggest_users_funcが提供されている場合、ユーザー存在チェック
+        if suggest_users_func is not None:
+            try:
+                suggestions = asyncio.run(suggest_users_func(users))
+                
+                # 存在しないユーザーがある場合
+                if suggestions:
+                    console = Console()
+                    corrected_users = []
+                    
+                    for user in users:
+                        if user in suggestions:
+                            # 候補選択メニューを表示
+                            choice = _show_user_suggestions_menu(user, suggestions[user], suggest_users_func)
+                            if choice is None:
+                                # キャンセル
+                                return False, None
+                            elif choice == "DELETE":
+                                # このユーザーを削除（リストに追加しない）
+                                continue
+                            else:
+                                corrected_users.append(choice)
+                        else:
+                            # 存在するユーザーはそのまま追加
+                            corrected_users.append(user)
+                    
+                    users = corrected_users
+                
+            except Exception as e:
+                console = Console()
+                console.print(f"[red]ユーザー候補取得エラー: {e}[/red]")
+                console.print("[yellow]元の入力をそのまま使用します[/yellow]")
+        
+        return True, users
+    else:
+        # 無入力の場合、値を消去するか確認
+        current_users = current_users_func()
+        if current_users:
+            should_clear = yes_no_menu(
+                f"現在の{filter_type}設定({len(current_users)}人)を消去しますか？",
+                default_yes=False
+            )
+            if should_clear:
+                return True, []  # 空のリストで消去
+        return False, None  # メニューに戻る
+
+
+def show_user_filter_menu(settings: UserFilterSettings, suggest_users_func=None):
     """ユーザーフィルタリングメニューを表示"""
     while True:
         print(f"\n=== ユーザーフィルタリング設定 ===")
@@ -40,11 +204,11 @@ def show_user_filter_menu(settings: UserFilterSettings):
             return  # noneは即座に抜ける
             
         elif choice_index == 1:  # includes
-            if _handle_includes(settings):
+            if _handle_includes(settings, suggest_users_func):
                 return  # includes設定完了時は即座に抜ける
             
         elif choice_index == 2:  # excludes
-            if _handle_excludes(settings):
+            if _handle_excludes(settings, suggest_users_func):
                 return  # excludes設定完了時は即座に抜ける
             
         elif choice_index == 3:  # threshold min
@@ -54,72 +218,64 @@ def show_user_filter_menu(settings: UserFilterSettings):
             _handle_threshold_max(settings)
 
 
-def _handle_includes(settings: UserFilterSettings):
+def _handle_includes(settings: UserFilterSettings, suggest_users_func=None):
     """includes設定の処理"""
-    users_input = safe_text_input(
+    success, users = _handle_user_input_with_suggestions(
         "ユーザー名をコンマ区切りで入力: ",
-        history="user"
+        "user",
+        suggest_users_func,
+        lambda: settings.get_includes() if settings.has_includes() else [],
+        "includes"
     )
     
-    if users_input is None:
-        # Ctrl+Dの場合、何も変更せずにメニューに戻る
-        return False
-    elif users_input.strip():
-        users = [user.strip() for user in users_input.split(',') if user.strip()]
-        # includes設定時は他の設定をすべてクリア
-        settings.set_includes(users)
-        console = Console()
-        console.print(f"[green]includes設定: {len(users)}人のユーザーを対象[/green]")
-        return True  # includes設定完了
-    else:
-        # 無入力の場合、値を消去するか確認
-        if settings.has_includes():
-            current_value = settings.get_includes()
-            should_clear = yes_no_menu(
-                f"現在のincludes設定({len(current_value)}人)を消去しますか？",
-                default_yes=False
-            )
-            if should_clear:
-                console = Console()
-                settings.clear_includes()
-                console.print(f"[green]includes設定を消去しました[/green]")
-                console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
-        # 回答に関わらずメニューに戻る
-        return False
+    if not success:
+        return False  # メニューに戻る
+    
+    if users is not None:
+        if len(users) > 0:
+            # includes設定時は他の設定をすべてクリア
+            settings.set_includes(users)
+            console = Console()
+            console.print(f"[green]includes設定: {len(users)}人のユーザーを対象[/green]")
+            return True  # includes設定完了
+        else:
+            # 空のリストで消去
+            settings.clear_includes()
+            console = Console()
+            console.print(f"[green]includes設定を消去しました[/green]")
+            console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
+    
+    return False  # メニューに戻る
 
 
-def _handle_excludes(settings: UserFilterSettings):
+def _handle_excludes(settings: UserFilterSettings, suggest_users_func=None):
     """excludes設定の処理"""
-    users_input = safe_text_input(
+    success, users = _handle_user_input_with_suggestions(
         "除外ユーザー名をコンマ区切りで入力: ",
-        history="user"
+        "user",
+        suggest_users_func,
+        lambda: settings.get_excludes() if settings.has_excludes() else [],
+        "excludes"
     )
     
-    if users_input is None:
-        # Ctrl+Dの場合、何も変更せずにメニューに戻る
-        return False
-    elif users_input.strip():
-        users = [user.strip() for user in users_input.split(',') if user.strip()]
-        # excludes設定時は他の設定をすべてクリア
-        settings.set_excludes(users)
-        console = Console()
-        console.print(f"[green]excludes設定: {len(users)}人のユーザーを除外[/green]")
-        return True  # excludes設定完了
-    else:
-        # 無入力の場合、値を消去するか確認
-        if settings.has_excludes():
-            current_value = settings.get_excludes()
-            should_clear = yes_no_menu(
-                f"現在のexcludes設定({len(current_value)}人)を消去しますか？",
-                default_yes=False
-            )
-            if should_clear:
-                console = Console()
-                settings.clear_excludes()
-                console.print(f"[green]excludes設定を消去しました[/green]")
-                console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
-        # 回答に関わらずメニューに戻る
-        return False
+    if not success:
+        return False  # メニューに戻る
+    
+    if users is not None:
+        if len(users) > 0:
+            # excludes設定時は他の設定をすべてクリア
+            settings.set_excludes(users)
+            console = Console()
+            console.print(f"[green]excludes設定: {len(users)}人のユーザーを除外[/green]")
+            return True  # excludes設定完了
+        else:
+            # 空のリストで消去
+            settings.clear_excludes()
+            console = Console()
+            console.print(f"[green]excludes設定を消去しました[/green]")
+            console.print(f"[dim]現在の設定: {settings.format_status()}[/dim]")
+    
+    return False  # メニューに戻る
 
 
 def _handle_threshold_min(settings: UserFilterSettings):

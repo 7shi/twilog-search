@@ -101,7 +101,7 @@ def main():
                 show_help()
                 continue
             elif command == "user":
-                show_user_filter_menu(search_settings.user_filter)
+                show_user_filter_menu(search_settings.user_filter, client.suggest_users)
                 continue
             elif command == "date":
                 show_date_filter_menu(search_settings.date_filter)
