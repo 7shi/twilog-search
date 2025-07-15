@@ -2,16 +2,37 @@
 """
 processed_contentテーブルのテキストをRuri3でベクトル化し、分割safetensorsファイルに保存するスクリプト
 """
-
 import argparse
 import json
 import os
 from datetime import datetime
 from pathlib import Path
 from tqdm import tqdm
-from data_csv import TwilogDataAccess, strip_content
 
 MODEL = "cl-nagoya/ruri-v3-310m"
+
+# モデルキャッシュ（グローバル辞書）
+_model_cache = {}
+
+def get_model(device="cpu"):
+    """
+    モデルを取得する（キャッシュ機能付き）
+    
+    Args:
+        device: 使用するデバイス
+        
+    Returns:
+        SentenceTransformerモデル
+    """
+    cache_key = f"{MODEL}_{device}"
+    
+    if cache_key not in _model_cache:
+        print("sentence_transformersをインポート中...")
+        from sentence_transformers import SentenceTransformer
+        print(f"Ruri v3モデルを読み込み中... (device: {device})")
+        _model_cache[cache_key] = SentenceTransformer(MODEL, device=device)
+    
+    return _model_cache[cache_key]
 
 def embed_text(model, text):
     """
@@ -36,6 +57,9 @@ def load_data_from_csv(csv_path):
     Returns:
         (post_id, content)のリスト
     """
+    # data_csvを遅延読み込み
+    from data_csv import TwilogDataAccess, strip_content
+    
     data_access = TwilogDataAccess(csv_path)
     
     # 全投稿データを取得
@@ -81,7 +105,7 @@ def save_chunk(chunk_data, chunk_id, output_dir, model):
         "vectors": vectors_tensor
     }, filename)
 
-def create_metadata(total_posts, chunk_size, output_dir, embedding_dim, csv_path):
+def create_metadata(total_posts, chunk_size, output_dir, embedding_dim, source_path, source_type="csv"):
     """
     メタデータファイルを作成する
     
@@ -90,12 +114,13 @@ def create_metadata(total_posts, chunk_size, output_dir, embedding_dim, csv_path
         chunk_size: チャンクサイズ
         output_dir: 出力ディレクトリ
         embedding_dim: 埋め込み次元数
-        csv_path: CSVファイルのパス
+        source_path: ソースファイルのパス
+        source_type: ソースファイルのタイプ（csv, jsonl等）
     """
     chunks = (total_posts + chunk_size - 1) // chunk_size
     
-    # CSVファイルのパスをoutput_dirの親ディレクトリからの相対パスに変換
-    csv_relative_path = os.path.relpath(csv_path, output_dir.parent)
+    # ソースファイルのパスをoutput_dirの親ディレクトリからの相対パスに変換
+    source_relative_path = os.path.relpath(source_path, output_dir.parent)
     
     metadata = {
         "total_posts": total_posts,
@@ -103,7 +128,8 @@ def create_metadata(total_posts, chunk_size, output_dir, embedding_dim, csv_path
         "chunks": chunks,
         "model": MODEL,
         "embedding_dim": embedding_dim,
-        "csv_path": csv_relative_path
+        "source_path": source_relative_path,
+        "source_type": source_type
     }
     
     with open(output_dir / "meta.json", "w", encoding="utf-8") as f:
@@ -129,13 +155,15 @@ def find_next_available_chunk_id(output_dir):
     
     return chunk_id
 
-def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=True):
+def vectorize_data(data, output_dir, source_path, source_type="csv", chunk_size=1000, device="cpu", resume=True):
     """
-    CSVファイルをベクトル化してsafetensorsファイルに保存する
+    データをベクトル化してsafetensorsファイルに保存する汎用関数
     
     Args:
-        csv_path: CSVファイルのパス
+        data: (post_id, content)のリスト
         output_dir: 出力ディレクトリのパス
+        source_path: ソースファイルのパス（メタデータ用）
+        source_type: ソースファイルのタイプ（csv, jsonl等）
         chunk_size: チャンクサイズ
         device: 使用するデバイス
         resume: 中断・再開機能を使用するか
@@ -146,8 +174,6 @@ def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=Tr
     output_path = Path(output_dir)
     output_path.mkdir(exist_ok=True)
     
-    # データ読み込み
-    data = load_data_from_csv(csv_path)
     total_posts = len(data)
     all_post_ids = set(post_id for post_id, _ in data)
     print(f"総投稿数: {total_posts}")
@@ -181,11 +207,8 @@ def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=Tr
         print("すべてのpost_idが変換済みです")
         return
     
-    # 変換が必要な場合のみsentence_transformersとモデルを読み込み
-    print("sentence_transformersをインポート中...")
-    from sentence_transformers import SentenceTransformer
-    print(f"Ruri v3モデルを読み込み中... (device: {device})")
-    model = SentenceTransformer(MODEL, device=device)
+    # 変換が必要な場合のみモデルを取得
+    model = get_model(device)
     
     # テストベクトルで次元数を確認
     test_vector = embed_text(model, "test")
@@ -195,7 +218,7 @@ def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=Tr
     # 残りのpost_idのみを対象に変換
     remaining_data = [(post_id, content) for post_id, content in data if post_id in remaining_post_ids]
     
-    # 1000件ずつ処理
+    # チャンクサイズずつ処理
     chunk_count = (len(remaining_data) + chunk_size - 1) // chunk_size
     for i in range(chunk_count):
         chunk_data = remaining_data[i * chunk_size : (i + 1) * chunk_size]
@@ -204,8 +227,25 @@ def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=Tr
         save_chunk(chunk_data, chunk_id, output_path, model)
     
     # メタデータ作成
-    create_metadata(total_posts, chunk_size, output_path, embedding_dim, csv_path)
+    create_metadata(total_posts, chunk_size, output_path, embedding_dim, source_path, source_type)
     print(f"出力先: {output_dir}")
+
+def vectorize_csv(csv_path, output_dir, chunk_size=1000, device="cpu", resume=True):
+    """
+    CSVファイルをベクトル化してsafetensorsファイルに保存する
+    
+    Args:
+        csv_path: CSVファイルのパス
+        output_dir: 出力ディレクトリのパス
+        chunk_size: チャンクサイズ
+        device: 使用するデバイス
+        resume: 中断・再開機能を使用するか
+    """
+    # データ読み込み
+    data = load_data_from_csv(csv_path)
+    
+    # 汎用関数を呼び出し
+    vectorize_data(data, output_dir, csv_path, "csv", chunk_size, device, resume)
 
 def main():
     """メイン関数"""
