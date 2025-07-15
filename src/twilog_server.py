@@ -40,13 +40,13 @@ class TwilogServer(EmbedServer):
             raise  # 例外を再発生させて上位で処理される
     
     @rpc_method
-    async def vector_search(self, query: str, top_k: int = None):
+    async def vector_search(self, query: str, top_k: int = None, mode: str = "content", weights: list = None):
         """類似検索を実行（Streaming Extensions対応、V|T検索対応）"""
         if not query:
             raise ValueError("query is required")
         
         # SearchEngineにベクトル検索を委譲
-        results = self.search_engine.vector_search(query, top_k=top_k)
+        results = self.search_engine.vector_search(query, top_k=top_k, mode=mode, weights=weights)
         
         # Streaming Extensions対応: 結果を分割（2万件ずつ）
         chunk_size = 20000
@@ -69,7 +69,7 @@ class TwilogServer(EmbedServer):
         return {"streaming": chunks}
     
     @rpc_method
-    async def search_similar(self, query: str, settings: dict = None):
+    async def search_similar(self, query: str, settings: dict = None, mode: str = "content", weights: list = None):
         """類似検索を実行（フィルタリング付き、V|T検索対応）"""
         if not query:
             raise ValueError("query is required")
@@ -86,7 +86,7 @@ class TwilogServer(EmbedServer):
             raise ValueError(f"top_k must be between 1 and 100, got {top_k}")
         
         # SearchEngineに類似検索を委譲
-        results = self.search_engine.search_similar(query, search_settings)
+        results = self.search_engine.search_similar(query, search_settings, mode=mode, weights=weights)
         
         # タプルのリストを構造化されたデータに変換
         structured_results = []
@@ -116,7 +116,7 @@ class TwilogServer(EmbedServer):
         return self.search_engine.get_database_stats()
     
     @rpc_method
-    async def search_posts_by_text(self, search_term: str, limit: int = 50):
+    async def search_posts_by_text(self, search_term: str, limit: int = 50, source: str = "content"):
         """テキスト検索を実行"""
         if not search_term:
             raise ValueError("search_term is required")
@@ -126,7 +126,7 @@ class TwilogServer(EmbedServer):
             raise ValueError(f"limit must be between 1 and 1000, got {limit}")
         
         # SearchEngineに委譲
-        return self.search_engine.search_posts_by_text(search_term, limit)
+        return self.search_engine.search_posts_by_text(search_term, limit, source)
     
     @rpc_method
     async def suggest_users(self, user_list: list):

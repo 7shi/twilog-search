@@ -136,3 +136,8 @@
 **Problem**: ユーザー名入力支援機能が不足しており、タイポや表記ゆれが発生した場合に適切な候補提案ができず、ユーザー体験の向上が困難だった。また、SearchEngineで実装された類似ユーザー検索機能をRPC経由で利用するためのAPIが不足していた。
 
 **Solution**: `suggest_users`RPCメソッドを実装し、SearchEngineの`suggest_users`機能をWebSocket経由で提供。ユーザー名リストを受け取り、存在しないユーザーに対してレーベンシュタイン距離による類似ユーザー上位5人を返却。入力バリデーション（空リスト・型チェック）を実装し、不正なリクエストを適切に遮断。クライアント・MCP両方から利用可能な統一APIとして、ユーザー名入力支援機能をサーバー側で一元提供する設計を実現。
+
+### ハイブリッド検索システムのRPC統合
+**Problem**: SearchEngineでハイブリッド検索システム（6種類の検索モード）が実装されたが、RPC経由でこれらの機能を利用するためのAPIパラメータが不足していた。投稿内容・タグ付け理由・要約の3つのベクトル空間を活用した高度な検索機能がクライアント側から利用できない状況だった。
+
+**Solution**: `vector_search`と`search_similar`メソッドに`mode`パラメータ（デフォルト: "content"）と`weights`パラメータ（デフォルト: None）を追加。`search_posts_by_text`メソッドに`source`パラメータ（デフォルト: "content"）を追加し、3つのソース（content、reasoning、summary）からのテキスト検索を可能にした。これにより、6種類の検索モード（content、reasoning、summary、average、product、weighted）がすべてRPC経由で利用可能となり、クライアント・MCP両方から統一されたハイブリッド検索機能を提供。

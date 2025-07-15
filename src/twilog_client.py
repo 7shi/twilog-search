@@ -36,13 +36,15 @@ class TwilogClient(EmbedClient):
         super().__init__(host=host, port=port)
     
     @rpc_method
-    async def vector_search(self, query_text: str, top_k: Optional[int] = None) -> Dict:
+    async def vector_search(self, query_text: str, top_k: Optional[int] = None, mode: str = "content", weights: Optional[list] = None) -> Dict:
         """
         ベクトル検索を実行
         
         Args:
             query_text: 検索クエリ
             top_k: 取得件数制限（Noneの場合は全件）
+            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
+            weights: 重み付けモード用の重み（合計1.0）
             
         Returns:
             (post_id, similarity)のタプルのリスト
@@ -50,9 +52,11 @@ class TwilogClient(EmbedClient):
         Raises:
             RuntimeError: サーバーエラーまたは通信エラー
         """
-        params = {"query": query_text}
+        params = {"query": query_text, "mode": mode}
         if top_k is not None:
             params["top_k"] = top_k
+        if weights is not None:
+            params["weights"] = weights
         results = await self._send_request("vector_search", params)
         
         # 分割送信されたデータを結合
@@ -68,13 +72,15 @@ class TwilogClient(EmbedClient):
         return first
     
     @rpc_method
-    async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None) -> list:
+    async def search_similar(self, query_text: str, search_settings: Optional[SearchSettings] = None, mode: str = "content", weights: Optional[list] = None) -> list:
         """
         類似検索を実行（フィルタリング付き）
         
         Args:
             query_text: 検索クエリ
             search_settings: 検索設定（top_k含む）
+            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
+            weights: 重み付けモード用の重み（合計1.0）
             
         Returns:
             構造化された検索結果のリスト
@@ -82,9 +88,11 @@ class TwilogClient(EmbedClient):
         Raises:
             RuntimeError: サーバーエラーまたは通信エラー
         """
-        params = {"query": query_text}
+        params = {"query": query_text, "mode": mode}
         if search_settings is not None:
             params["settings"] = search_settings.to_dict()
+        if weights is not None:
+            params["weights"] = weights
         return await self._send_request("search_similar", params)
     
     @rpc_method
@@ -120,13 +128,14 @@ class TwilogClient(EmbedClient):
         return await self._send_request("get_database_stats", {})
     
     @rpc_method
-    async def search_posts_by_text(self, search_term: str, limit: Optional[int] = None) -> list:
+    async def search_posts_by_text(self, search_term: str, limit: Optional[int] = None, source: str = "content") -> list:
         """
         テキスト検索を実行
         
         Args:
             search_term: 検索文字列
             limit: 取得件数制限（デフォルト: 50）
+            source: 検索対象ソース ("content", "reasoning", "summary")
             
         Returns:
             投稿情報の辞書のリスト
@@ -134,7 +143,7 @@ class TwilogClient(EmbedClient):
         Raises:
             RuntimeError: サーバーエラーまたは通信エラー
         """
-        params = {"search_term": search_term}
+        params = {"search_term": search_term, "source": source}
         if limit is not None:
             params["limit"] = limit
         return await self._send_request("search_posts_by_text", params)
@@ -181,11 +190,21 @@ class TwilogCommand(EmbedCommand):
             search_parser = subparsers.add_parser('vector_search', help='ベクトル検索を実行')
             search_parser.add_argument('query', help='検索クエリ')
             search_parser.add_argument('-k', '--top-k', type=int, help='取得件数制限')
+            search_parser.add_argument('-m', '--mode', default='content', 
+                                     choices=['content', 'reasoning', 'summary', 'average', 'product', 'weighted'],
+                                     help='検索モード (デフォルト: content)')
+            search_parser.add_argument('-w', '--weights', nargs='+', type=float, 
+                                     help='重み付けモード用の重み（例: 0.7 0.2 0.1）')
             
             # search_similar command
             similar_parser = subparsers.add_parser('search_similar', help='類似検索を実行（フィルタリング付き）')
             similar_parser.add_argument('query', help='検索クエリ')
             similar_parser.add_argument('-k', '--top-k', type=int, help='取得件数制限')
+            similar_parser.add_argument('-m', '--mode', default='content', 
+                                       choices=['content', 'reasoning', 'summary', 'average', 'product', 'weighted'],
+                                       help='検索モード (デフォルト: content)')
+            similar_parser.add_argument('-w', '--weights', nargs='+', type=float, 
+                                       help='重み付けモード用の重み（例: 0.7 0.2 0.1）')
             
             # get_user_stats command
             user_stats_parser = subparsers.add_parser('get_user_stats', help='ユーザー統計を取得')
@@ -198,6 +217,9 @@ class TwilogCommand(EmbedCommand):
             text_search_parser = subparsers.add_parser('search_posts_by_text', help='テキスト検索を実行')
             text_search_parser.add_argument('search_term', help='検索文字列')
             text_search_parser.add_argument('-l', '--limit', type=int, help='取得件数制限')
+            text_search_parser.add_argument('-s', '--source', default='content', 
+                                           choices=['content', 'reasoning', 'summary'],
+                                           help='検索対象ソース (デフォルト: content)')
             
             # suggest_users command
             suggest_parser = subparsers.add_parser('suggest_users', help='類似ユーザーを提案')
@@ -208,29 +230,22 @@ class TwilogCommand(EmbedCommand):
     @rpc_method
     async def vector_search(self, args) -> None:
         """vector_searchコマンドの処理"""
-        results = await self.client.vector_search(args.query, args.top_k)
+        results = await self.client.vector_search(args.query, args.top_k, args.mode, args.weights)
         data = results.get("data", [])
-        print(f"検索結果: {len(data)}件")
+        print(f"検索結果: {len(data)}件 (mode: {args.mode})")
         for i, (post_id, similarity) in enumerate(data[:10], 1):
             print(f"{i:2d}. similarity={similarity:.5f}, post_id={post_id}")
     
     @rpc_method
     async def search_similar(self, args) -> None:
         """search_similarコマンドの処理"""
+        import json
         search_settings = None
         if args.top_k is not None:
             search_settings = SearchSettings(args.top_k)
-        results = await self.client.search_similar(args.query, search_settings)
-        print(f"類似検索結果: {len(results)}件")
-        for result in results[:10]:
-            rank = result.get('rank', 0)
-            similarity = result.get('score', 0.0)
-            post_info = result.get('post', {})
-            user = post_info.get('user', 'unknown')
-            content = post_info.get('content', '')[:100]  # 最初の100文字のみ表示
-            timestamp = post_info.get('timestamp', '')
-            print(f"{rank:2d}. {similarity:.5f} - @{user} [{timestamp}]")
-            print(f"    {content}...")
+        results = await self.client.search_similar(args.query, search_settings, args.mode, args.weights)
+        print(f"類似検索結果: {len(results)}件 (mode: {args.mode})")
+        print(json.dumps(results, indent=2, ensure_ascii=False))
     
     @rpc_method
     async def get_user_stats(self, args) -> None:
@@ -254,8 +269,8 @@ class TwilogCommand(EmbedCommand):
     @rpc_method
     async def search_posts_by_text(self, args) -> None:
         """search_posts_by_textコマンドの処理"""
-        results = await self.client.search_posts_by_text(args.search_term, args.limit)
-        print(f"テキスト検索結果: {len(results)}件")
+        results = await self.client.search_posts_by_text(args.search_term, args.limit, args.source)
+        print(f"テキスト検索結果: {len(results)}件 (source: {args.source})")
         for i, post in enumerate(results[:10], 1):
             user = post.get('user', 'unknown')
             content = post.get('content', '')[:100]  # 最初の100文字のみ表示
