@@ -1,41 +1,46 @@
 # Pythonファイル分類
 
-プロジェクト内のPythonファイルをデータアクセス方法によって分類。
+プロジェクト内のPythonファイルを機能別・接頭辞別に分類。
 
-1. **vectorize.py** - CSVから直接ベクトル化
-2. **twilog_server.py** - 検索サーバー起動
-3. **search.py** - 対話的検索インターフェース
-4. **add_tags.py** - タグ付け（オプション）
-5. **batch_generate.py** - バッチAPIリクエスト生成
-6. **batch_usage.py** - バッチ処理結果の使用統計・コスト計算
-7. **batch_merge.py** - バッチ処理結果マージツール
-8. **batch_vectorize.py** - JSONLファイルのフィールド別ベクトル化
+## ツール群別の詳細
 
-## ユーティリティ
-- **read_csv.py**: 単純なCSVファイル読み込み（データ確認用、特定のデータソースに依存しない）
+### 主要処理フロー
+- **vectorize.py** - CSVから直接ベクトル化、中断・再開機能対応
+- **twilog_server.py** - embed_server.pyを継承した統合検索サーバー、SearchEngine統合、MCP互換メソッド提供、meta.jsonからCSVパス自動取得
+- **search.py** - 軽量化された対話的検索フロントエンド、twilog_server.pyのsearch_similarメソッド使用、設定機能復活
+- **add_tags.py** - data_csv.pyを使用、CSVファイルから直接データ読み込み、strip_content関数で前処理適用、タグ付け（オプション）
 
-## データアクセス層
-- **data_csv.py**: CSVファイルから直接データを読み込む専用のデータアクセス層
-
-## 前処理
-- **vectorize.py**: data_csv.pyをインポートして使用し、CSVファイルから直接データを読み込んでベクトル化を行う
-- **add_tags.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、strip_content関数で前処理を適用してタグ付けを行う
+### バッチ処理パイプライン（batch_*）
+使用順序に従った5段階のバッチ処理パイプライン：
 - **batch_generate.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、GeminiバッチAPI用のJSONLリクエストファイルを生成する（1万件ずつ分割）
+- **batch_usage.py**: バッチ処理結果の使用統計とコスト計算、candidates構造の検証、データ品質確認
+- **batch_merge.py**: 複数バッチ結果ファイルの統合マージ、重複除去、データ整合性チェック
 - **batch_vectorize.py**: vectorize.pyの汎用化された関数を再利用し、JSONLファイルのreasoningとsummaryフィールドを個別にベクトル化
 
-## サーバー・クライアント基盤
-- **embed_server.py**: ベクトル化サーバーの基盤実装（データソースに依存しない）
-- **embed_client.py**: ベクトル化サーバーへのクライアント実装（データソースに依存しない）
-- **twilog_server.py**: embed_server.pyを継承した統合検索サーバー（SearchEngine統合、MCP互換メソッド提供）
-- **twilog_client.py**: embed_client.pyを継承したTwilog検索クライアント（データソースに依存しない）
+### ベクトル化基盤（embed_*）
+- **embed_server.py**: ベクトル化サーバーの基盤実装、デーモン管理、WebSocket通信、エラーハンドリング
+- **embed_client.py**: ベクトル化サーバーへのクライアント基盤実装、WebSocket通信抽象化
 
-## 検索
-- **search.py**: 軽量化された対話的検索フロントエンド（twilog_server.pyのsearch_similarメソッド使用、設定機能復活済み）
-- **search_engine.py**: ベクトル検索結果の絞り込み・フィルタリング・重複除去を担当する検索エンジン（ステートレス設計、twilog_server.pyで統合使用）
-- **text_proc.py**: 高度なテキスト検索のためのクエリパース機能（シェル風構文、クォート・エスケープ・除外条件サポート、V|T複合検索構文）
-- **safe_input.py**: 安全なテキスト入力機能（readline履歴管理、検証機能）
-- **settings.py**: 設定情報を格納するデータクラス（SearchSettings統合管理、シリアライズ対応）
-- **settings_ui.py**: 設定UI機能を提供する純粋関数群（search.pyで復活使用）
+### Twilog特化実装（twilog_*）
+- **twilog_server.py**: embed_server.pyを継承した統合検索サーバー、SearchEngine統合、MCP互換メソッド提供、meta.jsonからCSVパス自動取得
+- **twilog_client.py**: embed_client.pyを継承したTwilog検索クライアント、SearchSettings対応
+
+### 検索関連（search_*）
+- **search.py**: 軽量化された対話的検索フロントエンド、twilog_server.pyのsearch_similarメソッド使用、設定機能復活
+- **search_engine.py**: ベクトル検索結果の絞り込み・フィルタリング・重複除去、ステートレス設計
+
+### 設定管理（settings_*）
+- **settings.py**: SearchSettings統合管理、シリアライズ対応、ユーザー・日付フィルタリング設定
+- **settings_ui.py**: 設定UI機能の純粋関数群、search.pyで使用
+
+### データアクセス（data_*）
+- **data_csv.py**: CSVファイルから直接データを読み込む専用のデータアクセス層
+- **read_csv.py**: 単純なCSVファイル読み込み、データ確認用
+
+### 単独機能ツール
+- **text_proc.py**: クエリパース機能、シェル風構文、クォート・エスケープ・除外条件サポート、V|T複合検索構文
+- **safe_input.py**: 安全なテキスト入力機能、readline履歴管理、検証機能
+- **mcp_wrap.py**: MCPサーバーとの対話的通信ラッパー、JSON-RPCクライアント
 
 ## アーキテクチャ
 このプロジェクトは責務分離を重視した統合設計を採用：
@@ -59,5 +64,3 @@
 - **標準データファイル**: `twilog.csv`（デフォルト、引数省略可能）
 - **データ形式**: CSVベース（SQLiteデータベース不要）
 
-## MCP
-- **mcp_wrap.py**: MCPサーバーとの対話的な通信ラッパー（データソースに依存しない）
