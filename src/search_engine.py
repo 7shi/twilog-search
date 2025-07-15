@@ -7,22 +7,28 @@ from pathlib import Path
 from settings import SearchSettings
 from data_csv import TwilogDataAccess
 from text_proc import parse_search_terms, parse_pipeline_query
+from vector_store import VectorStore
 
 
 class SearchEngine:
     """Twilogベクトル検索クラス"""
     
-    def __init__(self, embeddings_dir: str, embed_func: Callable[[str], Any]):
+    def __init__(self, embed_func: Callable[[str], Any], embeddings_dir: str,
+                 reasoning_dir: Optional[str] = None, summary_dir: Optional[str] = None):
         """
         初期化（遅延初期化対応）
         
         Args:
-            embeddings_dir: 埋め込みディレクトリのパス
             embed_func: テキストをベクトル化する関数
+            embeddings_dir: 埋め込みディレクトリのパス
+            reasoning_dir: reasoningベクトルディレクトリ
+            summary_dir: summaryベクトルディレクトリ
         """
         # パラメータを保存（初期化は後で行う）
-        self.embeddings_dir = Path(embeddings_dir)
         self._embed_text = embed_func
+        self.embeddings_dir = Path(embeddings_dir)
+        self.reasoning_dir = reasoning_dir
+        self.summary_dir = summary_dir
         
         # メタデータを読み込み
         metadata_path = self.embeddings_dir / "meta.json"
@@ -39,15 +45,13 @@ class SearchEngine:
         self.post_user_map: dict = {}
         self.user_post_counts: dict = {}
         self.user_list: List[str] = []
-        self.post_ids: List[int] = []
-        self.vectors: Optional[Any] = None
-        
-        # ハイブリッド検索用データ
-        self.content_vectors: Optional[Any] = None
-        self.reasoning_vectors: Optional[Any] = None
-        self.summary_vectors: Optional[Any] = None
         self.tags_data: Dict[int, dict] = {}
         self.tag_index: Dict[str, List[int]] = {}
+        
+        # ベクトルストア
+        self.content_store = VectorStore(str(self.embeddings_dir))
+        self.reasoning_store: Optional[VectorStore] = None
+        self.summary_store: Optional[VectorStore] = None
     
     def _load_metadata(self, metadata_path: Path) -> dict:
         """メタデータファイルを読み込む"""
@@ -86,6 +90,24 @@ class SearchEngine:
         # ユーザー情報の読み込み
         self.post_user_map, self.user_post_counts, self.user_list = self.data_access.load_user_data()
         
+        # ベクトルストアの読み込み
+        # contentベクトルストア
+        self.content_store.load_vectors()
+        
+        # reasoningベクトルストア
+        if self.reasoning_dir is not None:
+            reasoning_path = Path(self.reasoning_dir)
+            if reasoning_path.exists():
+                self.reasoning_store = VectorStore(str(reasoning_path))
+                self.reasoning_store.load_vectors()
+        
+        # summaryベクトルストア
+        if self.summary_dir is not None:
+            summary_path = Path(self.summary_dir)
+            if summary_path.exists():
+                self.summary_store = VectorStore(str(summary_path))
+                self.summary_store.load_vectors()
+        
         # タグデータの読み込み
         self._load_tags_data()
         
@@ -95,81 +117,6 @@ class SearchEngine:
         # 初期化完了フラグ
         self.initialized = True
     
-    def _load_vectors(self, source_dir: str) -> Tuple[List[int], Any]:
-        """
-        指定されたディレクトリからベクトルデータを読み込む
-        
-        Args:
-            source_dir: ベクトルデータのディレクトリパス
-            
-        Returns:
-            (post_ids, vectors)のタプル
-        """
-        import torch
-        import safetensors.torch
-        
-        # ディレクトリパスを解決
-        if source_dir == "embeddings":
-            vector_dir = self.embeddings_dir
-        else:
-            vector_dir = self.embeddings_dir.parent / source_dir
-        
-        # meta.jsonの存在チェック
-        meta_path = vector_dir / "meta.json"
-        if not meta_path.exists():
-            return [], torch.tensor([])
-        
-        # メタデータを読み込み
-        import json
-        try:
-            with open(meta_path, 'r', encoding='utf-8') as f:
-                metadata = json.load(f)
-        except (json.JSONDecodeError, FileNotFoundError):
-            return [], torch.tensor([])
-        
-        all_post_ids = []
-        all_vectors = []
-        
-        # チャンク数を取得
-        chunks = metadata.get("chunks", 0)
-        
-        # 存在するファイルのリストを作成
-        existing_files = []
-        for chunk_id in range(chunks):
-            chunk_file = vector_dir / f"{chunk_id:04d}.safetensors"
-            if chunk_file.exists():
-                existing_files.append((chunk_id, chunk_file))
-        
-        # 進捗表示付きで読み込み
-        for chunk_id, chunk_file in existing_files:
-            # safetensorsファイルを読み込み
-            data = safetensors.torch.load_file(chunk_file)
-            post_ids = data["post_ids"].tolist()
-            vectors = data["vectors"]
-            
-            all_post_ids.extend(post_ids)
-            all_vectors.append(vectors)
-        
-        # 全ベクトルを結合
-        if all_vectors:
-            combined_vectors = torch.cat(all_vectors, dim=0)
-            return all_post_ids, combined_vectors
-        else:
-            return [], torch.tensor([])
-    
-    def _load_all_vectors(self) -> None:
-        """全てのベクトルデータを読み込む"""
-        # contentベクトルの読み込み（既存の動作を維持）
-        self.post_ids, self.content_vectors = self._load_vectors("embeddings")
-        
-        # reasoningベクトルの読み込み
-        _, self.reasoning_vectors = self._load_vectors("batch/reasoning")
-        
-        # summaryベクトルの読み込み
-        _, self.summary_vectors = self._load_vectors("batch/summary")
-        
-        # 既存の動作を維持するため、vectorsをcontent_vectorsと同じものを指す
-        self.vectors = self.content_vectors
     
     def is_text_match(self, content: str, include_terms: List[str], exclude_terms: List[str]) -> bool:
         """
@@ -206,14 +153,12 @@ class SearchEngine:
         Returns:
             利用可能なモードのリスト
         """
-        available_modes = []
+        available_modes = ["content"]
         
         # 単一ソースモード
-        if self.content_vectors is not None and len(self.content_vectors) > 0:
-            available_modes.append("content")
-        if self.reasoning_vectors is not None and len(self.reasoning_vectors) > 0:
+        if self.reasoning_store is not None:
             available_modes.append("reasoning")
-        if self.summary_vectors is not None and len(self.summary_vectors) > 0:
+        if self.summary_store is not None:
             available_modes.append("summary")
         
         # 統合モード（2つ以上のベクトルが必要）
@@ -237,7 +182,7 @@ class SearchEngine:
         if mode not in available_modes:
             raise ValueError(f"Vector search mode '{mode}' is not available. Available modes: {available_modes}")
     
-    def _calculate_similarities(self, query_vector: Any, mode: str, weights: List[float] = None) -> Any:
+    def _calculate_similarities(self, query_vector: Any, mode: str, weights: List[float] = None) -> List[Tuple[int, float]]:
         """
         指定されたモードでクエリベクトルとの類似度を計算
         
@@ -247,55 +192,85 @@ class SearchEngine:
             weights: 重み付けモード用の重み（合計1.0）
             
         Returns:
-            類似度テンソル
+            (post_id, similarity)のタプルリスト
         """
-        import torch
-        import torch.nn.functional as F
-        
         # 単一ソースモード
         if mode == "content":
-            return F.cosine_similarity(self.content_vectors, query_vector, dim=1)
+            return self.content_store.vector_search(query_vector)
         elif mode == "reasoning":
-            return F.cosine_similarity(self.reasoning_vectors, query_vector, dim=1)
+            if self.reasoning_store is not None:
+                return self.reasoning_store.vector_search(query_vector)
+            return []
         elif mode == "summary":
-            return F.cosine_similarity(self.summary_vectors, query_vector, dim=1)
+            if self.summary_store is not None:
+                return self.summary_store.vector_search(query_vector)
+            return []
         
         # 統合モード
         elif mode in ["average", "product", "weighted"]:
+            import torch
+            import torch.nn.functional as F
+            
+            # 各ストアからベクトルを取得
+            content_vectors = self.content_store.vectors
+            reasoning_vectors = None
+            summary_vectors = None
+            common_post_ids = self.content_store.post_ids
+            
+            if self.reasoning_store is not None:
+                reasoning_vectors = self.reasoning_store.vectors
+                # 共通のpost_idのみを取得
+                common_post_ids = list(set(common_post_ids) & set(self.reasoning_store.post_ids))
+            
+            if self.summary_store is not None:
+                summary_vectors = self.summary_store.vectors
+                # 共通のpost_idのみを取得
+                common_post_ids = list(set(common_post_ids) & set(self.summary_store.post_ids))
+            
+            # 共通post_idに対応するベクトルを取得
             similarities = []
-            
-            # 各ベクトルとの類似度を計算
-            if self.content_vectors is not None and len(self.content_vectors) > 0:
-                similarities.append(F.cosine_similarity(self.content_vectors, query_vector, dim=1))
-            if self.reasoning_vectors is not None and len(self.reasoning_vectors) > 0:
-                similarities.append(F.cosine_similarity(self.reasoning_vectors, query_vector, dim=1))
-            if self.summary_vectors is not None and len(self.summary_vectors) > 0:
-                similarities.append(F.cosine_similarity(self.summary_vectors, query_vector, dim=1))
-            
-            if len(similarities) == 0:
-                return torch.tensor([])
-            
-            # 統合方法に応じて計算
-            if mode == "average":
-                return torch.stack(similarities).mean(dim=0)
-            elif mode == "product":
-                result = similarities[0]
-                for sim in similarities[1:]:
-                    result = result * sim
-                return result
-            elif mode == "weighted":
-                if weights is None:
-                    # デフォルトの重み（内容重視）
-                    weights = [0.7, 0.2, 0.1]
+            for post_id in common_post_ids:
+                sims = []
                 
-                # 重みを正規化
-                weights = weights[:len(similarities)]
-                weight_sum = sum(weights)
-                if weight_sum > 0:
-                    weights = [w / weight_sum for w in weights]
+                vec = self.content_store.get_vector(post_id)
+                if vec is not None:
+                    sim = F.cosine_similarity(vec, query_vector, dim=0)
+                    sims.append(sim.item())
                 
-                weighted_sims = [sim * weight for sim, weight in zip(similarities, weights)]
-                return torch.stack(weighted_sims).sum(dim=0)
+                if reasoning_vectors is not None:
+                    vec = self.reasoning_store.get_vector(post_id)
+                    if vec is not None:
+                        sim = F.cosine_similarity(vec, query_vector, dim=0)
+                        sims.append(sim.item())
+                
+                if summary_vectors is not None:
+                    vec = self.summary_store.get_vector(post_id)
+                    if vec is not None:
+                        sim = F.cosine_similarity(vec, query_vector, dim=0)
+                        sims.append(sim.item())
+                
+                if sims:
+                    # 統合方法に応じて計算
+                    if mode == "average":
+                        final_sim = sum(sims) / len(sims)
+                    elif mode == "product":
+                        final_sim = 1.0
+                        for sim in sims:
+                            final_sim *= sim
+                    elif mode == "weighted":
+                        if weights is None:
+                            weights = [0.7, 0.2, 0.1]
+                        weights = weights[:len(sims)]
+                        weight_sum = sum(weights)
+                        if weight_sum > 0:
+                            weights = [w / weight_sum for w in weights]
+                        final_sim = sum(sim * weight for sim, weight in zip(sims, weights))
+                    
+                    similarities.append((post_id, final_sim))
+            
+            # 類似度で降順ソート
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            return similarities
         
         raise ValueError(f"Unknown mode: {mode}")
     
@@ -346,22 +321,14 @@ class SearchEngine:
         # ベクトル検索クエリをベクトル化
         query_vector = self._embed_text(vector_query)
         
-        # embeddings遅延読み込み
-        if self.vectors is None:
-            self._load_all_vectors()
-        
         # モードの妥当性チェック
         self._validate_search_mode(mode)
         
         # 類似度の計算
         similarities = self._calculate_similarities(query_vector, mode, weights)
         
-        if similarities is None or len(similarities) == 0:
+        if not similarities:
             return []
-        
-        # 類似度でソート（降順）
-        import torch
-        sorted_indices = torch.argsort(similarities, descending=True)
         
         # テキストフィルタリング条件を準備
         text_include_terms = []
@@ -371,10 +338,7 @@ class SearchEngine:
         
         # 結果を作成（フィルタリングしながらtop_kまで収集）
         results = []
-        for idx in sorted_indices:
-            post_id = self.post_ids[idx.item()]
-            similarity = similarities[idx].item()
-            
+        for post_id, similarity in similarities:
             # テキストフィルタリングを適用
             if text_filter:
                 post_data = self.data_access.posts_data.get(post_id, {})

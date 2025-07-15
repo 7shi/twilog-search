@@ -40,15 +40,15 @@
 
 **Solution**: 遅延初期化パターンを導入し、コンストラクタではパラメータ保存のみを行い、実際の重い処理は明示的な初期化呼び出しまで延期。`initialized`フラグで初期化状態を管理し、インスタンス生成の軽量化と初期化タイミングの制御を両立。
 
-### メタデータ・CSV設定の内部管理
-**Problem**: TwilogServerとSearchEngineの両方でメタデータ読み込み処理が重複し、TwilogServerが複雑な`_load_csv_path()`処理を担当する必要があった。
+### コンストラクタ引数順序の最適化とディレクトリ管理の柔軟化
+**Problem**: SearchEngineがベクトル化機能を持たずTwilogServerに依存していたため単体テストが困難で、固定的なディレクトリ構成のみをサポートしていたため開発環境での運用が制限されていた。
 
-**Solution**: SearchEngineのコンストラクタを`embeddings_dir`のみを受け取る設計に変更し、メタデータ・CSV設定をSearchEngine内部で管理。`get_model_name()`メソッドでTwilogServerにモデル情報を提供する単一責任の設計を採用。
+**Solution**: SearchEngineのコンストラクタで`embed_func`を第1引数として配置し、内部で`self._embed_text`として保持することで完全な自己完結を実現。`reasoning_dir`と`summary_dir`をオプション引数として追加し、任意のディレクトリ構成をサポート。メタデータ・CSV設定は内部で管理し、`get_model_name()`メソッドでモデル情報を提供する責務分離を採用。
 
-### embeddings遅延読み込みによる初期化時間短縮
-**Problem**: SearchEngineの`initialize()`メソッドでembeddings読み込みも実行されるため、TwilogServerの初期化時間が長大になっていた。
+### VectorStore統合による正確なベクトル管理
+**Problem**: 従来の`_load_all_vectors()`実装では、reasoning/summaryベクトルのpost_idsを破棄してcontentのpost_idsを流用していたため、post_idとベクトルの対応関係が破綻し、検索精度が大幅に低下していた。
 
-**Solution**: embeddings読み込みを`vector_search()`メソッドの初回実行時に遅延読み込みする設計に変更。`if self.vectors is None: self._load_embeddings()`による条件分岐で、検索処理が実際に必要になるまでembeddings読み込みを延期。CSV・ユーザーデータの読み込みは`initialize()`で実行し、embeddings読み込みのみを遅延させる２段階初期化アーキテクチャを採用。
+**Solution**: VectorStoreクラスによる独立したベクトル管理を採用。`content_store`、`reasoning_store`、`summary_store`の3つのVectorStoreインスタンスを使用し、各モードで正確なpost_id→ベクトル対応を保証。`initialize()`メソッド内で指定されたディレクトリパスに基づいて各ストアを初期化し、遅延読み込みによるメモリ効率化も実現。
 
 ### 高度なテキスト検索機能の実装
 **Problem**: 単純な文字列マッチングでは、複数キーワードの組み合わせや除外条件を含む検索クエリに対応できず、柔軟な検索ができない問題があった。
@@ -70,10 +70,11 @@
 
 **Solution**: SearchEngineの`vector_search`をフラットな`List[Tuple[int, float]]`を返すシンプルな内部APIに変更し、chunk分割処理をRPCレイヤー（twilog_server.py）に移動。内部では単純な配列として処理し、RPC通信時のみStreaming Extensions対応の分割処理を実行する責務分離を実現。これにより、SearchEngineは純粋な検索エンジンとして機能し、通信プロトコルの詳細から分離された。
 
-### ベクトル化機能の統合による自己完結性
-**Problem**: SearchEngineがベクトル化機能を持たず、TwilogServerに依存していたため、SearchEngine単体でのテストが困難で、責務の分散により再利用性が制限されていた。
+### 直接ディレクトリ指定による柔軟なベクトル管理
+**Problem**: TwilogServerでディレクトリパスを動的に設定する必要があるが、SearchEngineが固定的なディレクトリ構成（batch/reasoning、batch/summary）にハードコードされていたため、柔軟な運用ができなかった。
 
-**Solution**: SearchEngineのコンストラクタで`embed_func`を受け取り、内部で`self._embed_text`として保持。`search_similar`と`vector_search`を文字列クエリを受け取るAPIに変更し、内部でV|T解析とベクトル化を実行。これにより、SearchEngineが完全に自己完結し、TwilogServerは純粋なRPCラッパーとなった。
+**Solution**: SearchEngineコンストラクタで`reasoning_dir`と`summary_dir`を直接受け取る設計に変更し、TwilogServerから明示的にディレクトリパスを渡すアーキテクチャを採用。`initialize()`メソッドで指定されたディレクトリが存在する場合のみVectorStoreを初期化し、利用可能なモードを動的に決定。これにより、コマンドライン引数から柔軟なディレクトリ指定が可能になり、開発・テスト環境での運用性が大幅に向上した。
+
 
 ### ジェネレーターによるデータ差異吸収と処理統一化
 **Problem**: テキスト検索とベクトル検索で結果形式が異なり、同じフィルタリング処理（ユーザー・日付フィルタ・重複除去）が重複実装されていた。この重複により、保守性が低下し、バグ修正時に複数箇所の変更が必要だった。

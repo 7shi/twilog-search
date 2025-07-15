@@ -4,6 +4,7 @@ import sys
 import time
 import argparse
 from pathlib import Path
+from typing import Optional
 from embed_server import EmbedServer, check_server_status, stop_server, start_daemon, rpc_method
 from settings import SearchSettings
 from search_engine import SearchEngine
@@ -12,20 +13,32 @@ from search_engine import SearchEngine
 class TwilogServer(EmbedServer):
     """Twilog検索サーバー：embeddings読み込みとベクトル検索機能付き"""
     
-    def __init__(self, embeddings_dir: str):
+    def __init__(self, embeddings_dir: str, reasoning_dir: str, summary_dir: str):
         self.embeddings_dir = Path(embeddings_dir)
+        self.reasoning_dir = reasoning_dir
+        self.summary_dir = summary_dir
         
-        # SearchEngineインスタンスを生成（初期化は後で行う）
-        self.search_engine = SearchEngine(self.embeddings_dir, self._embed_text)
-        
-        # SearchEngineからモデル名を取得
-        model_name = self.search_engine.get_model_name()
+        # メタデータからモデル名を取得
+        metadata_path = self.embeddings_dir / "meta.json"
+        import json
+        try:
+            with open(metadata_path, 'r', encoding='utf-8') as f:
+                metadata = json.load(f)
+            model_name = metadata.get("model", "")
+        except (FileNotFoundError, json.JSONDecodeError) as e:
+            raise RuntimeError(f"メタデータファイルの読み込みに失敗しました: {e}")
         
         super().__init__(model_name)
+        
+        # SearchEngineは_init_modelで初期化
+        self.search_engine = None
     
     async def _init_model(self):
         """モデル初期化とSearchEngine初期化"""
         await super()._init_model()  # 親クラスの初期化を呼び出す
+        
+        # SearchEngineインスタンスを生成
+        self.search_engine = SearchEngine(self._embed_text, str(self.embeddings_dir), self.reasoning_dir, self.summary_dir)
         
         # SearchEngine初期化（embeddings読み込み含む）
         await self.report_progress("SearchEngine初期化開始...")
@@ -33,7 +46,8 @@ class TwilogServer(EmbedServer):
         try:
             self.search_engine.initialize()
             init_time = time.monotonic() - start_time
-            embeddings_count = len(self.search_engine.post_ids)
+            embeddings_count = len(self.search_engine.content_store.post_ids)
+            
             await self.report_progress(f"SearchEngine初期化完了: {embeddings_count}件 ({init_time:.2f}秒)")
         except Exception as e:
             await self.report_progress(f"初期化失敗: {e}")
@@ -146,6 +160,10 @@ async def main():
     start_parser = subparsers.add_parser('start', help='Start the daemon server')
     start_parser.add_argument('-e', '--embeddings-dir', default='embeddings', 
                              help='埋め込みディレクトリ（デフォルト: embeddings）')
+    start_parser.add_argument('-r', '--reasoning-dir', default='batch/reasoning',
+                             help='reasoningベクトルディレクトリ（デフォルト: batch/reasoning）')
+    start_parser.add_argument('-s', '--summary-dir', default='batch/summary',
+                             help='summaryベクトルディレクトリ（デフォルト: batch/summary）')
     
     # stop command
     subparsers.add_parser('stop', help='Stop the daemon server')
@@ -157,6 +175,10 @@ async def main():
     daemon_parser = subparsers.add_parser('_daemon', help=argparse.SUPPRESS)
     daemon_parser.add_argument('--embeddings-dir', default='embeddings', 
                               help='埋め込みディレクトリ（デフォルト: embeddings）')
+    daemon_parser.add_argument('--reasoning-dir', default='batch/reasoning',
+                              help='reasoningベクトルディレクトリ（デフォルト: batch/reasoning）')
+    daemon_parser.add_argument('--summary-dir', default='batch/summary',
+                              help='summaryベクトルディレクトリ（デフォルト: batch/summary）')
     
     args = parser.parse_args()
     
@@ -166,7 +188,7 @@ async def main():
         metadata_path = embeddings_dir / "meta.json"
         
         try:
-            server = TwilogServer(args.embeddings_dir)
+            server = TwilogServer(args.embeddings_dir, args.reasoning_dir, args.summary_dir)
             await server.start_server()
         except (FileNotFoundError, KeyError, RuntimeError, ValueError) as e:
             print(f"サーバー起動エラー: {e}")
@@ -182,7 +204,9 @@ async def main():
             # デーモン起動引数を作成
             daemon_args = [
                 sys.executable, __file__, "_daemon",
-                "--embeddings-dir", args.embeddings_dir
+                "--embeddings-dir", args.embeddings_dir,
+                "--reasoning-dir", args.reasoning_dir,
+                "--summary-dir", args.summary_dir
             ]
             await start_daemon(daemon_args)
     elif args.command == "stop":

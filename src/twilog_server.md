@@ -5,7 +5,7 @@
 ### embed_server基底クラスの継承による拡張
 **Problem**: ruri_server.pyは独自のアーキテクチャで実装されており、embed_server.pyの基底クラス設計による拡張性や動的モデル指定機能を活用できていなかった。
 
-**Solution**: embed_server.pyのBaseEmbedServerを継承してTwilogServerクラスを実装し、基底クラスの共通機能（ライブラリ読み込み、進捗報告、WebSocket通信）を活用しつつ、embeddings読み込みと検索機能を追加拡張する設計を採用。
+**Solution**: embed_server.pyのBaseEmbedServerを継承してTwilogServerクラスを実装し、基底クラスの共通機能（ライブラリ読み込み、進捗報告、WebSocket通信）を活用しつつ、VectorStore統合による正確なベクトル管理と検索機能を追加拡張する設計を採用。
 
 ### メタデータファイルからのモデル自動取得
 **Problem**: 外部からモデル名を指定する方式では、embeddingsファイルと実際に使用されるモデルが不整合を起こす可能性があり、検索精度に影響を与えるリスクがあった。
@@ -15,7 +15,7 @@
 ### init_model抽象メソッドの拡張実装
 **Problem**: 基本的なベクトル化機能だけでなく、twilogシステム特有のembeddings読み込みと検索インデックス構築も初期化時に実行する必要があった。
 
-**Solution**: init_modelメソッドをオーバーライドし、モデル初期化に加えてembeddings読み込み処理を統合。メタデータ読み込み、分割safetensorsファイル読み込み、ベクトル統合をモデル初期化の一部として実行し、検索準備を完了させる設計を採用。
+**Solution**: init_modelメソッドをオーバーライドし、モデル初期化に加えてVectorStore読み込み処理を統合。SearchEngineの初期化により、3つのVectorStore（content、reasoning、summary）を独立して管理し、post_idとベクトルの正確な対応関係を保証する設計を採用。
 
 ### ruri_server.pyの完全上位互換化
 **Problem**: ruri_server.pyの機能を維持しつつ、embed_serverの基底クラス設計による改善を取り込むため、既存の全機能を継承ベースで再実装する必要があった。
@@ -25,17 +25,17 @@
 ### 統合的なサーバー機能の実現
 **Problem**: ベクトル化のみのembed_serverと検索機能付きのruri_serverが分離していることで、用途に応じてサーバーを使い分ける必要があり、運用が複雑になっていた。
 
-**Solution**: BaseEmbedServerの基本機能（ベクトル化）にembeddings読み込みと検索機能を統合し、単一サーバーで両方の機能を提供。embedリクエストでベクトル化、queryリクエストで検索という明確な機能分離により、統合的な利用を可能にした。
+**Solution**: BaseEmbedServerの基本機能（ベクトル化）にVectorStore統合による正確なベクトル管理と検索機能を統合し、単一サーバーで両方の機能を提供。embedリクエストでベクトル化、queryリクエストで検索という明確な機能分離により、統合的な利用を可能にした。
 
 ### 拡張ポイントの活用による差分実装
 **Problem**: 基底クラスの機能を活用しつつ検索機能を追加する際、全てのリクエスト処理を重複実装すると、基底クラスの改善が反映されず、保守性が低下していた。
 
 **Solution**: `handle_additional_request`メソッドをオーバーライドして`query`リクエストのみを処理し、`status`、`check_init`、`stop`、`embed`リクエストは基底クラスに委譲。これにより、共通機能の修正は自動的に反映され、サブクラスは差分のみに集中。
 
-### デーモン起動引数の統一設計
-**Problem**: サブクラスごとに異なるデーモン起動引数が必要な場合、従来のget_daemon_args関数による実装では引数の受け渡しが複雑になり、保守性が低下していた。
+### デーモン起動引数の統一設計とディレクトリ継承
+**Problem**: サブクラスごとに異なるデーモン起動引数が必要な場合、従来のget_daemon_args関数による実装では引数の受け渡しが複雑になり、保守性が低下していた。また、複数のディレクトリオプションを適切に継承する仕組みが不足していた。
 
-**Solution**: start_daemon関数にdaemon_argsリストを直接渡す設計に変更。main関数でメタデータを読み込み、適切なデーモン起動引数を組み立ててstart_daemonに渡すことで、引数生成ロジックを単純化し、デーモン起動シーケンスの共通化を実現。
+**Solution**: start_daemon関数にdaemon_argsリストを直接渡す設計に変更し、`--embeddings-dir`、`--reasoning-dir`、`--summary-dir`の3つの引数を一括定義で記述。コマンドライン引数で`-r/--reasoning-dir`と`-s/--summary-dir`オプション（デフォルト: `batch/reasoning`、`batch/summary`）を追加し、start commandで指定された設定を確実に_daemonプロセスに引き継ぐ統一アーキテクチャを実現。
 
 ### サーバー種別識別機能の実装
 **Problem**: 複数の継承サーバー（EmbedServer、TwilogServer）が同じポートで動作する際、どのサーバーが起動しているかを識別する手段がなく、デバッグや運用監視が困難だった。
@@ -62,10 +62,6 @@
 
 **Solution**: 旧形式のサポートを完全に削除し、JSON-RPC 2.0のみに統一。これにより、コードの簡潔性と保守性を向上させ、標準プロトコルへの完全移行を実現。
 
-### vector_searchメソッドの統合とStreaming Extensions対応
-**Problem**: vector_searchとvector_search_rpcの二重実装により、コードの重複と保守性の低下が発生していた。また、大容量検索結果の分割送信処理がメソッド内に分散していた。
-
-**Solution**: vector_searchメソッドを単一のasyncメソッドに統合し、Streaming Extensions対応のチャンク分割ロジックを実装。メソッドがリストを返すことで、embed_server.pyのhandle_clientが自動的に分割送信を実行する責務分離を実現。各チャンクは`{"data": [...], "chunk": 1, "total_chunks": 3, "more": true}`形式で返却され、メモリ効率と通信効率の両立を達成。
 
 ### SearchEngine統合による機能一元化
 **Problem**: twilog_server.pyはベクトル検索のみを提供し、フィルタリング機能はクライアント側（search.py）とMCPサーバー側で重複実装されていた。この二重実装により、機能追加時の修正箇所が分散し、保守性が低下していた。また、MCPサーバーではSQLiteベースの古い実装が残存し、CSVベースの新アーキテクチャとの不整合が発生していた。
@@ -87,20 +83,10 @@
 
 **Solution**: user_post_countsをSearchSettingsから完全分離し、サーバー側での処理を大幅簡素化。search_similarメソッドでuser_post_countsの自動補完処理を削除し、SearchSettings.from_dict()では純粋な設定値のみをデシリアライズする軽量な処理に変更。SearchEngineのsearch()メソッドでは、self.user_post_countsを引数として直接渡すことで、データの重複保持と不要な通信を排除。これにより、サーバー側の処理負荷とメモリ使用量を削減し、より効率的な設定管理アーキテクチャを実現した。
 
-### SearchEngineラッパー化による明確な責務分離
-**Problem**: TwilogServerがSearchEngineの機能を内包する設計により、ベクトル化とembed_server機能の責務が不明確になっていた。また、SearchEngineの遅延インポートとコンストラクタでの即座初期化により、アーキテクチャが複雑化していた。
+### SearchEngineラッパー化とディレクトリ管理による責務分離
+**Problem**: TwilogServerがSearchEngineの機能を内包する設計により責務が不明確で、固定的なディレクトリ構成のみをサポートしていたため、開発環境での柔軟な運用ができなかった。また、SearchEngineの生成タイミングが不適切で、ベクトル化機能との依存関係が複雑だった。
 
-**Solution**: TwilogServerを完全なSearchEngineラッパーに再設計し、コンストラクタでSearchEngineインスタンスを生成、`_init_model()`でSearchEngineの遅延初期化を実行する明確な分離を実現。TwilogServerはクエリのベクトル化のみを担当し、全ての検索処理はSearchEngineに委譲する設計とした。SearchEngineに遅延初期化パターンを導入することで、グローバルインポートが可能になり、インスタンス生成と初期化のタイミングを分離。これにより、embed_server基底クラスの段階的初期化と調和し、責務が明確で保守性の高いアーキテクチャを確立した。
-
-### コンストラクタの単純化とメタデータ管理の統一
-**Problem**: TwilogServerのコンストラクタでメタデータを外部から受け取る設計により、main関数での重複したメタデータ読み込み処理が発生し、責務の分離が不十分だった。また、`_load_csv_path()`など複雑な処理がTwilogServerに残存していた。
-
-**Solution**: TwilogServerのコンストラクタを`embeddings_dir`のみを受け取る単純な設計に変更。SearchEngineからモデル名を取得する`get_model_name()`メソッドを活用し、メタデータ読み込みをSearchEngine内部に統一。main関数でのメタデータ読み込み処理を削除し、CSV設定を含むすべての設定管理をSearchEngineに委譲。これにより、TwilogServerは純粋なWebSocketラッパーとなり、設定関連の複雑な処理を完全に分離した。
-
-### vector_searchメソッドのStreaming Extensions統合
-**Problem**: SearchEngineの`vector_search`メソッドが返すチャンク配列をそのまま返すと、embed_serverの新しいStreaming Extensions判定条件（`streamingフィールドのみを含む辞書`）に適合せず、分割送信処理が実行されない問題があった。
-
-**Solution**: `vector_search`メソッドでSearchEngineから取得したチャンク配列を`{"streaming": chunks}`形式でラッピングして返すように修正。これにより、embed_serverのStreaming Extensions処理（`isinstance(result, dict) and len(result) == 1 and "streaming" in result`）が正しく判定され、大容量検索結果の分割送信が適切に動作。責務分離を保ちながら、新しいStreaming Extensions仕様に完全準拠した。
+**Solution**: TwilogServerを完全なSearchEngineラッパーに再設計し、コンストラクタで3つの必須引数（`embeddings_dir`、`reasoning_dir`、`summary_dir`）を受け取ってディレクトリを管理。`_init_model()`でベクトル化機能初期化後にSearchEngineを生成し、`embed_func`を第1引数として渡してすべての検索処理を委譲。コマンドライン引数（`-r/--reasoning-dir`、`-s/--summary-dir`）で柔軟なディレクトリ指定を可能にし、TwilogServerは純粋なRPCラッパーとして機能する責務が明確なアーキテクチャを確立した。
 
 ### top_kバリデーションによる不正なリクエスト制限
 **Problem**: 極端に大きな`top_k`値（1000件、50000件など）のリクエストが送信されると、サーバーリソースの過度な消費やメモリ不足によるクラッシュが発生する可能性があった。
@@ -120,12 +106,8 @@
 ### RPCレイヤーでのchunk分割統合
 **Problem**: SearchEngineの`vector_search`メソッドでStreaming Extensions対応のchunk分割処理を実行していたため、内部API使用時に不要な分割処理が実行され、処理効率と設計の単純性が損なわれていた。
 
-**Solution**: chunk分割処理をSearchEngineからTwilogServerの`vector_search`メソッドに移動し、RPC通信レイヤーでのみ分割処理を実行する設計に変更。SearchEngineからフラットな配列を受け取り、twilog_server側で2万件ずつのchunk分割とStreaming Extensions形式（`{"streaming": chunks}`）への変換を実行。これにより、内部APIは単純な配列処理を維持し、RPC通信の要件（大容量データの分割送信）は通信レイヤーで解決する責務分離を実現した。
+**Solution**: chunk分割処理をSearchEngineからTwilogServerの`vector_search`メソッドに移動し、RPC通信レイヤーでのみ分割処理を実行する設計に変更。SearchEngineから`List[Tuple[int, float]]`形式のフラットな配列を受け取り、twilog_server側で2万件ずつのchunk分割とStreaming Extensions形式（`{"streaming": chunks}`）への変換を実行。これにより、内部APIは単純な配列処理を維持し、RPC通信の要件（大容量データの分割送信）は通信レイヤーで解決する責務分離を実現した。
 
-### SearchEngineベクトル化統合による純粋なRPCラッパー化
-**Problem**: TwilogServerがSearchEngineからベクトル化機能を分離して保持していたため、相互参照による設計の不健全性が生じ、SearchEngine単体でのテストが困難になっていた。また、V|T解析やベクトル化処理がTwilogServer側に残存し、責務の分離が不完全だった。
-
-**Solution**: SearchEngineのコンストラクタに`self._embed_text`を渡し、SearchEngineを完全に自己完結させる設計に変更。`search_similar`と`vector_search`を文字列クエリを直接受け取るAPIに修正し、V|T解析・ベクトル化・フィルタリングのすべてをSearchEngine内部で実行。TwilogServerは純粋なRPCラッパーとなり、クエリ文字列とsettingsをそのまま委譲し、結果をRPC形式に変換するのみを担当。これにより、ロジックの一元化と明確な責務分離を実現した。
 
 ### RPC引数形式の自然な統一化とセキュリティ強化
 **Problem**: 基底クラス（embed_server.py）の`params: dict = None`形式から継承したメソッドシグネチャが不明確で、IDEでの型推論や補完機能が効果的に機能していなかった。また、動的メソッド呼び出しにより意図しないメソッドがRPC経由でアクセス可能になるセキュリティリスクが存在していた。
@@ -141,3 +123,4 @@
 **Problem**: SearchEngineでハイブリッド検索システム（6種類の検索モード）が実装されたが、RPC経由でこれらの機能を利用するためのAPIパラメータが不足していた。投稿内容・タグ付け理由・要約の3つのベクトル空間を活用した高度な検索機能がクライアント側から利用できない状況だった。
 
 **Solution**: `vector_search`と`search_similar`メソッドに`mode`パラメータ（デフォルト: "content"）と`weights`パラメータ（デフォルト: None）を追加。`search_posts_by_text`メソッドに`source`パラメータ（デフォルト: "content"）を追加し、3つのソース（content、reasoning、summary）からのテキスト検索を可能にした。これにより、6種類の検索モード（content、reasoning、summary、average、product、weighted）がすべてRPC経由で利用可能となり、クライアント・MCP両方から統一されたハイブリッド検索機能を提供。
+
