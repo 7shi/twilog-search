@@ -43,18 +43,30 @@ uv run src/add_tags.py twilog.csv
 #### バッチAPI処理（Gemini特化版）
 ```bash
 # 1. バッチリクエスト生成
-uv run src/generate_batch.py twilog.csv
+uv run src/batch_generate.py twilog.csv
 
 # 2-3. バッチジョブ投入・ポーリング・結果取得
 # 注意: submit_batch.pyとpoll_batch.pyは独立プロジェクトに移行しました
 # 代替ツール: https://github.com/7shi/gemini-batch
+
+# 4. バッチ処理結果の使用統計・コスト計算
+uv run src/batch_usage.py
+
+# 5. バッチ処理結果マージ
+uv run src/batch_merge.py
+
+# 6. マージ済みデータのベクトル化
+uv run src/batch_vectorize.py
 ```
-- **generate_batch.py**: CSVからGeminiバッチAPI用JSONLリクエスト生成（1万件ずつ分割）
+- **batch_generate.py**: CSVからGeminiバッチAPI用JSONLリクエスト生成（1万件ずつ分割）
 - **gemini-batch**: バッチジョブ管理用の独立ツール
   - 複数JSONLファイルの一括ジョブ投入・監視
   - TUIベースのリアルタイム進捗表示
   - 自動リソースクリーンアップ機能
   - インストール: `uv tool install https://github.com/7shi/gemini-batch.git`
+- **batch_usage.py**: バッチ処理結果の使用統計とコスト計算（処理効率の把握）
+- **batch_merge.py**: 複数バッチ結果ファイルの統合マージツール
+- **batch_vectorize.py**: JSONLファイルのreasoningとsummaryフィールド別ベクトル化
 - **処理時間**: リクエスト生成数分 + バッチ処理時間（大幅短縮期待）
 - **特徴**: add_tags.pyのGemini特化版、コスト効率とスケーラビリティを重視
 
@@ -112,10 +124,13 @@ twilog.csv
     └─ タグ付けパイプライン
         ├─ add_tags.py (リアルタイム処理) → tags/ (.jsonlファイル)
         └─ Gemini特化版
-            ├─ generate_batch.py (バッチリクエスト生成) → batch/ (.jsonlファイル)
-            └─ gemini-batch (独立ツール)
-                ├─ gembatch submit (バッチジョブ投入) → Geminiバッチ処理
-                └─ gembatch poll (ジョブポーリング・結果取得) → batch/results/ (.jsonlファイル)
+            ├─ batch_generate.py (バッチリクエスト生成) → batch/ (.jsonlファイル)
+            ├─ gemini-batch (独立ツール)
+            │   ├─ gembatch submit (バッチジョブ投入) → Geminiバッチ処理
+            │   └─ gembatch poll (ジョブポーリング・結果取得) → batch/results/ (.jsonlファイル)
+            ├─ batch_usage.py (使用統計・コスト計算) → 処理効率把握
+            ├─ batch_merge.py (結果マージ) → tags_merged/ (.jsonl統合ファイル)
+            └─ batch_vectorize.py (フィールド別ベクトル化) → embeddings_tags/ (.safetensorsファイル)
 ```
 
 ## 現在の状況
@@ -127,7 +142,7 @@ twilog.csv
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
 - タグ付け（add_tags.py）- CSVベース、リアルタイム処理対応
-- Gemini特化タグ付け（generate_batch.py + [gemini-batch](https://github.com/7shi/gemini-batch)）- バッチAPI処理対応
+- Gemini特化タグ付け（batch_generate.py + [gemini-batch](https://github.com/7shi/gemini-batch)）- バッチAPI処理対応
 
 ## 出力ファイル
 
@@ -135,7 +150,7 @@ twilog.csv
 |---------|------|------|
 | embeddings/*.safetensors | 複数ファイル | ベクトルデータ |
 | tags/*.jsonl | 任意 | 自動生成タグ（リアルタイム処理） |
-| batch/*.jsonl | 任意 | バッチAPIリクエスト（generate_batch.py生成） |
+| batch/*.jsonl | 任意 | バッチAPIリクエスト（batch_generate.py生成） |
 | batch/results/*.jsonl | 任意 | バッチ処理結果（gemini-batch取得） |
 
 ## 技術仕様

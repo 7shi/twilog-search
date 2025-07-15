@@ -44,12 +44,15 @@
 - 処理時間: 約158時間（22万件）
 
 #### バッチAPI処理（Gemini特化版）
-**generate_batch.py**: Geminiバッチ処理API用のJSONLリクエスト生成
+
+##### 1. バッチリクエスト生成
+**batch_generate.py**: Geminiバッチ処理API用のJSONLリクエスト生成
 - 1万件ずつの最適チャンク分割（バッチAPI上限対応）
 - add_tags.pyのプロンプトとスキーマ設計を継承
 - リアルタイム処理の158時間から大幅な処理時間短縮が期待
 - データ準備時間: 数分（JSONLリクエスト生成のみ）
 
+##### 2. バッチジョブ管理
 **gemini-batch**: 独立バッチジョブ管理ツール（分離済み）
 - リポジトリ: [gemini-batch](https://github.com/7shi/gemini-batch)
 - 汎用的なGeminiバッチジョブ管理CLIツール
@@ -57,6 +60,26 @@
 - 複数ファイル一括投入・TUIベース進捗表示
 - 自動リソースクリーンアップ機能
 - インストール: `uv tool install https://github.com/7shi/gemini-batch.git`
+
+##### 3. バッチ結果の分析と統合
+**batch_usage.py**: バッチ処理結果の使用統計とコスト計算
+- 各バッチファイルの処理数とトークン使用量を集計
+- コスト計算と処理効率の可視化
+- candidates構造の厚密な検証機能
+- データ品質と完全性の確認
+
+**batch_merge.py**: 複数バッチ結果ファイルの統合マージ
+- batch/results/ディレクトリの全JSONLファイルを統合
+- 重複除去とデータ整合性チェック
+- 統一されたタグ付きデータの生成
+- 結果品質の検証とレポート生成
+
+##### 4. タグベクトル化
+**batch_vectorize.py**: JSONLファイルのreasoningとsummaryフィールド別ベクトル化
+- vectorize.pyの汎用化された関数を再利用
+- reasoning（理由）とsummary（要約）を個別にベクトル化
+- タグベースのハイブリッド検索用データ生成
+- embeddings_tags/ディレクトリへの分割保存
 
 ### WebSocketベースのアーキテクチャ分離と統合
 **Problem**: ベクトル検索機能をアプリケーションに統合すると、重いライブラリ（torch、SentenceTransformers）の読み込みにより、開発時の頻繁な再起動で生産性が低下する。また、MCPサーバー（TypeScript）とSearchEngine（Python）でフィルタリング機能が二重実装され、保守性とコードの一貫性に問題があった。
@@ -126,7 +149,7 @@ twilog/
 ├── search_engine.py          # フィルタリング機能の中核
 ├── data_csv.py               # CSVベースデータアクセス層
 ├── add_tags.py               # CSVベースタグ付けスクリプト（完了）
-├── generate_batch.py         # バッチAPIリクエスト生成（完了）
+├── batch_generate.py         # バッチAPIリクエスト生成（完了）
 └── gemini-batch/             # 独立バッチツール（分離済み）
 └── mcp/src/index.ts          # MCPラッパー（SQLite実装削除済み）
 ```
@@ -161,11 +184,23 @@ twilog/
   - data_csv.pyによるCSVファイル直接読み込み
   - strip_content関数による前処理統合
   - SQLiteデータベース構築不要
-- **generate_batch.py**: バッチAPIリクエスト生成
+- **batch_generate.py**: バッチAPIリクエスト生成
   - add_tags.pyのアーキテクチャとプロンプト設計を継承
   - GeminiバッチAPI用のJSONL形式出力
   - 1万件ずつの最適チャンク分割（バッチAPI上限対応）
   - 処理時間を158時間から数分（+API処理時間）に短縮
+- **batch_usage.py**: バッチ処理結果の分析ツール
+  - 使用統計とコスト計算機能
+  - candidates構造の厚密な検証
+  - データ品質と完全性の確認
+- **batch_merge.py**: バッチ結果マージツール
+  - 複数JSONLファイルの統合マージ
+  - 重複除去とデータ整合性チェック
+  - 結果品質の検証とレポート生成
+- **batch_vectorize.py**: タグベクトル化ツール
+  - JSONLファイルのreasoningとsummaryフィールド別ベクトル化
+  - vectorize.pyの汎用化関数を再利用
+  - ハイブリッド検索用データ生成
 - **gemini-batchツール**: 独立バッチジョブ管理（分離済み）
   - リポジトリ: [gemini-batch](https://github.com/7shi/gemini-batch)
   - 汎用的なGeminiバッチジョブ管理CLIツール

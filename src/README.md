@@ -6,7 +6,7 @@
 2. **twilog_server.py** - 検索サーバー起動
 3. **search.py** - 対話的検索インターフェース
 4. **add_tags.py** - タグ付け（オプション）
-5. **generate_batch.py** - バッチAPIリクエスト生成
+5. **batch_generate.py** - バッチAPIリクエスト生成
 6. **batch_usage.py** - バッチ処理結果の使用統計・コスト計算
 7. **batch_merge.py** - バッチ処理結果マージツール
 8. **batch_vectorize.py** - JSONLファイルのフィールド別ベクトル化
@@ -20,7 +20,7 @@
 ## 前処理
 - **vectorize.py**: data_csv.pyをインポートして使用し、CSVファイルから直接データを読み込んでベクトル化を行う
 - **add_tags.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、strip_content関数で前処理を適用してタグ付けを行う
-- **generate_batch.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、GeminiバッチAPI用のJSONLリクエストファイルを生成する（1万件ずつ分割）
+- **batch_generate.py**: data_csv.pyを使用してCSVファイルから直接データを読み込み、GeminiバッチAPI用のJSONLリクエストファイルを生成する（1万件ずつ分割）
 - **batch_vectorize.py**: vectorize.pyの汎用化された関数を再利用し、JSONLファイルのreasoningとsummaryフィールドを個別にベクトル化
 
 ## サーバー・クライアント基盤
