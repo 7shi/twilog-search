@@ -31,7 +31,7 @@ uv run src/vectorize.py
 
 ### 1-2. タグ付け段階（オプション）
 
-#### リアルタイム処理
+#### リアルタイム処理（可用性検証用・保留中）
 ```bash
 uv run src/add_tags.py twilog.csv
 ```
@@ -39,8 +39,9 @@ uv run src/add_tags.py twilog.csv
 - **出力**: tags/ディレクトリ（.jsonlファイル、1000件ずつ分割）
 - **処理時間**: 約158時間（22万件、ローカルLLM）
 - **特徴**: 1件ずつ処理・保存、中断・再開機能対応
+- **現状**: Geminiバッチ処理完了のため保留、将来のAPI依存軽減用
 
-#### バッチAPI処理（Gemini特化版）
+#### バッチAPI処理（Gemini特化版・完了済み）
 ```bash
 # 1. バッチリクエスト生成
 uv run src/batch_generate.py twilog.csv
@@ -67,7 +68,8 @@ uv run src/batch_vectorize.py
 - **batch_usage.py**: バッチ処理結果の使用統計とコスト計算（処理効率の把握）
 - **batch_merge.py**: 複数バッチ結果ファイルの統合マージツール
 - **batch_vectorize.py**: JSONLファイルのreasoningとsummaryフィールド別ベクトル化
-- **処理時間**: リクエスト生成数分 + バッチ処理時間（大幅短縮期待）
+- **実績**: 22.5万件を23バッチで処理、総時間約9時間（158時間→9時間の17.6倍高速化）
+- **品質**: 構造適合率100%、スキップ9件のみ（ブロック2件、LLM暴走7件）
 - **特徴**: add_tags.pyのGemini特化版、コスト効率とスケーラビリティを重視
 
 ### 2. 検索サーバー起動段階
@@ -141,8 +143,21 @@ twilog.csv
 - ベクトル検索（search.py）
 - V|T複合検索（パイプライン構文による統合）
 - MCP統合（twilog-mcp-server + mcp_wrap.py）
-- タグ付け（add_tags.py）- CSVベース、リアルタイム処理対応
-- Gemini特化タグ付け（batch_generate.py + [gemini-batch](https://github.com/7shi/gemini-batch)）- バッチAPI処理対応
+- タグ付け処理パイプライン完了（Geminiバッチ処理）
+  - batch_generate.py → gemini-batch → batch_merge.py → batch_vectorize.py
+  - 22万件のタグ付けデータ生成完了
+  - tags_merged/とembeddings_tags/ディレクトリにデータ保存済み
+
+### 次期実装予定
+- ハイブリッド検索システム（タグ検索 + ベクトル検索の統合）
+  - タグデータは準備済み、検索機能への統合が残り
+
+### 将来実装予定（オプション）
+- ローカルLLM可用性検証（Gemini vs Ollama + Qwen3）
+  - 統合システム完了後の可用性検証
+  - API依存リスクの軽減と選択肢の確保
+  - 実用最低ラインの品質達成とローカル処理の独立性評価
+  - 現状：Geminiが処理時間（9時間 vs 158時間）で圧倒的優位
 
 ## 出力ファイル
 
