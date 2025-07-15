@@ -67,7 +67,7 @@ uv run src/batch_vectorize.py
   - インストール: `uv tool install https://github.com/7shi/gemini-batch.git`
 - **batch_usage.py**: バッチ処理結果の使用統計とコスト計算（処理効率の把握）
 - **batch_merge.py**: 複数バッチ結果ファイルの統合マージツール
-- **batch_vectorize.py**: JSONLファイルのreasoningとsummaryフィールド別ベクトル化
+- **batch_vectorize.py**: JSONLファイルのreasoningとsummaryフィールド別ベクトル化（batch/{reasoning,summary}/へ出力）
 - **実績**: 22.5万件を23バッチで処理、総時間約9時間（158時間→9時間の17.6倍高速化）
 - **品質**: 構造適合率100%、スキップ9件のみ（ブロック2件、LLM暴走7件）
 - **特徴**: add_tags.pyのGemini特化版、コスト効率とスケーラビリティを重視
@@ -131,8 +131,8 @@ twilog.csv
             │   ├─ gembatch submit (バッチジョブ投入) → Geminiバッチ処理
             │   └─ gembatch poll (ジョブポーリング・結果取得) → batch/results/ (.jsonlファイル)
             ├─ batch_usage.py (使用統計・コスト計算) → 処理効率把握
-            ├─ batch_merge.py (結果マージ) → tags_merged/ (.jsonl統合ファイル)
-            └─ batch_vectorize.py (フィールド別ベクトル化) → embeddings_tags/ (.safetensorsファイル)
+            ├─ batch_merge.py (結果マージ) → batch/results.jsonl (.jsonl統合ファイル)
+            └─ batch_vectorize.py (フィールド別ベクトル化) → batch/{reasoning,summary}/ (.safetensorsファイル)
 ```
 
 ## 現在の状況
@@ -146,11 +146,17 @@ twilog.csv
 - タグ付け処理パイプライン完了（Geminiバッチ処理）
   - batch_generate.py → gemini-batch → batch_merge.py → batch_vectorize.py
   - 22万件のタグ付けデータ生成完了
-  - tags_merged/とembeddings_tags/ディレクトリにデータ保存済み
+  - batch/results.jsonlとbatch/{reasoning,summary}/ディレクトリにデータ保存済み
 
 ### 次期実装予定
-- ハイブリッド検索システム（タグ検索 + ベクトル検索の統合）
-  - タグデータは準備済み、検索機能への統合が残り
+- ハイブリッド検索システム（3つのベクトル空間統合）
+  - 投稿内容、タグ付け理由、要約の3つのベクトル空間を統合
+  - 6種類の検索モード（単一ソース3種 + 統合3種）
+  - 重み付け検索（5つのプリセット + カスタム設定）
+  - データは準備済み、検索機能への統合が残り
+- タグ集計・分析システム（ハイブリッド検索後の課題）
+  - タグ使用頻度の分析
+  - タグベース検索機能の実装
 
 ### 将来実装予定（オプション）
 - ローカルLLM可用性検証（Gemini vs Ollama + Qwen3）
