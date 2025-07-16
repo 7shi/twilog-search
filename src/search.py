@@ -156,17 +156,23 @@ def main():
             user = post_info.get('user', 'unknown')
             
             # ヘッダー情報（色付き）
-            header = f"[bold cyan]{rank:{rank_width}d}[/bold cyan]: [bold green]{similarity:.5f}[/bold green] [bold blue]{user}[/bold blue] [yellow][{post_info.get('timestamp', '')}][/yellow]"
+            header  = f"[bold cyan]{rank:{rank_width}d}[/bold cyan]:"           # ランク
+            header += f" [bold green]{similarity:.5f}[/bold green]"             # 類似度
+            header += f" [yellow][{post_info.get('timestamp', '')}][/yellow]"   # 日時
+            header += f" [bold blue]{user}[/bold blue]"                         # ユーザー
             
-            # URLがある場合は追加
-            if post_info.get('url'):
-                header += f" [dim]{post_info['url']}[/dim]"
+            # タグがある場合は追加
+            tags = post_info.get('tags', [])
+            if tags:
+                header += f" [bright_magenta][{' '.join(tags)}][/bright_magenta]"
             
             # パネル表示
             panel = Panel(
-                post_info.get('content', '').rstrip(),
+                post_info['content'].strip(),
                 title=header,
                 title_align="left",
+                subtitle=f"[blue]{post_info['url']}[/blue]",
+                subtitle_align="right",
                 border_style="bright_blue",
                 padding=(0, 1)
             )
