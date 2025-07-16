@@ -60,4 +60,14 @@
 ### suggest_users機能の外部化適応
 **Problem**: suggest_users機能がサーバー・クライアント実装からUserInfoクラスのローカル実装に変更されたが、settings_ui.pyではasyncio.runを使用した非同期呼び出しが残っており、同期関数に対する不適切な呼び出しが発生していた。
 
-**Solution**: UserInfoクラスのsuggest_usersメソッドが同期関数であることに合わせて、`asyncio.run(suggest_users_func(users))`を`suggest_users_func(users)`に変更し、直接呼び出しに修正。`_show_user_suggestions_menu`と`_handle_user_input_with_suggestions`の両方で同期呼び出しに統一し、エラーハンドリングも適切に動作するよう調整。これにより、ローカル実装による高速処理とサーバー通信の削減を実現した。
+**Solution**: UserInfoクラスのsuggest_usersメソッドが同期関数であることに合わせて、`asyncio.run(suggest_users_func(users))`を`suggest_users_func(users)`に変更し、直接呼び出しに修正。`_show_user_suggestions_menu`と`_handle_user_input_with_suggestions`の両方で同期呼び出しに統一し、エラーハンドリングも適切に動作するよう調整。これにより、ローカル実装による高速処理とサーバー通信の削除を実現した。
+
+### メニューオプション作成の共通関数化
+**Problem**: 各メニューで現在選択中の項目に●マークを付けるため、`if current_condition: options.append(f"[{i}] ● {text}")` と `else: options.append(f"[{i}] {text}")` のパターンが多数重複していた。この重複コードは保守性を低下させ、一貫性のあるUI実装を困難にしていた。
+
+**Solution**: `_add_menu_option(options, index, is_current, text)` 共通関数を作成し、メニューオプションの追加処理を統一。各メニューで設定状態のチェック（`settings.has_includes()`、`settings.has_from()`等）を行い、その結果を`is_current`パラメータとして渡す設計とした。これにより、ユーザーフィルタリングメニューでは20行のオプション作成コードを6行に、日付フィルタリングメニューでは16行を4行に短縮し、重み設定サブメニューでも統一された実装を実現。コードの可読性と保守性が大幅に向上した。
+
+### 複数設定状態の適切な表示対応
+**Problem**: 複数の設定が同時に存在する場合（例：threshold_minとthreshold_maxの両方、fromとtoの両方）に対して、単一の値を返す`get_filter_type()`メソッドでは適切に現在状態を表現できない問題があった。
+
+**Solution**: `get_filter_type()`メソッドを削除し、各設定の存在を個別にチェックする方式に変更。ユーザーフィルタリングでは`settings.has_includes()`、`settings.has_excludes()`等のメソッドを直接使用し、日付フィルタリングでは`settings.has_from()`、`settings.has_to()`を使用。これにより、複数設定が同時に存在する場合でも、それぞれに適切に●マークが表示され、ユーザーが現在の設定状態を正確に把握できるようになった。単一責任の原則に従い、各設定項目の状態を独立して管理する設計とした。

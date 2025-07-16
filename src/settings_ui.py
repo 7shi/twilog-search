@@ -10,6 +10,22 @@ from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_
 from settings import UserFilterSettings, DateFilterSettings, TopKSettings, SearchModeSettings
 
 
+def _add_menu_option(options: list, index: int, is_current: bool, text: str) -> None:
+    """
+    メニューオプションを追加する共通関数
+    
+    Args:
+        options: オプションリスト
+        index: メニュー番号
+        is_current: 現在選択中かどうか
+        text: オプション説明文
+    """
+    if is_current:
+        options.append(f"[{index}] ● {text}")
+    else:
+        options.append(f"[{index}] {text}")
+
+
 def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_users_func) -> str:
     """
     ユーザー候補選択メニューを表示（ループ形式）
@@ -48,10 +64,11 @@ def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_us
         # 特別な選択肢を追加
         options.append(f"[{suggestion_count + 1}] 直接入力")
         options.append(f"[{suggestion_count + 2}] 削除")
+        options.append(f"[0] 戻る")
         
         terminal_menu = TerminalMenu(
             options,
-            title=f"'{current_user}' の代替候補を選択してください (↑↓: 移動, Enter: 決定, Esc: キャンセル):",
+            title=f"'{current_user}' の代替候補を選択してください:",
             show_search_hint=True
         )
         
@@ -59,6 +76,8 @@ def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_us
         
         if choice_index is None:
             return None  # Escキャンセル
+        elif choice_index == len(options) - 1:  # [0] 戻る
+            return None  # 戻る
         elif choice_index < suggestion_count:
             selected_user = current_suggestions[choice_index]
             console.print(f"[green]'{selected_user}' を選択しました[/green]")
@@ -95,7 +114,7 @@ def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_us
                 # suggest_users_funcが提供されていない場合はそのまま使用
                 console.print(f"[green]'{new_user}' を選択しました[/green]")
                 return new_user
-        else:
+        elif choice_index == suggestion_count + 1:  # 削除
             return "DELETE"  # 削除を選択
 
 
@@ -185,23 +204,29 @@ def show_user_filter_menu(settings: UserFilterSettings, user_info=None):
         print(f"\n=== ユーザーフィルタリング設定 ===")
         print(f"現在の設定: {settings.format_status()}")
         
-        options = [
-            "[1] none（すべてのユーザー）",
-            "[2] includes（指定ユーザーのみ）",
-            "[3] excludes（指定ユーザーを除外）",
-            "[4] threshold min（投稿数下限）",
-            "[5] threshold max（投稿数上限）"
-        ]
+        options = []
+        
+        # 當前の設定状態を表示しながらメニュー項目を作成
+        is_none = not settings.filter_settings
+        _add_menu_option(options, 1, is_none, "none（すべてのユーザー）")
+        _add_menu_option(options, 2, settings.has_includes(), "includes（指定ユーザーのみ）")
+        _add_menu_option(options, 3, settings.has_excludes(), "excludes（指定ユーザーを除外）")
+        _add_menu_option(options, 4, settings.has_threshold_min(), "threshold min（投稿数下限）")
+        _add_menu_option(options, 5, settings.has_threshold_max(), "threshold max（投稿数上限）")
+        _add_menu_option(options, 0, False, "戻る")
         
         terminal_menu = TerminalMenu(
             options,
-            title="フィルター方式を選択してください (数字キー: 直接選択, ↑↓: 移動, Enter: 決定, Esc: 戻る):",
+            title="フィルター方式を選択してください:",
             show_search_hint=True
         )
         
         choice_index = terminal_menu.show()
         
         if choice_index is None:
+            return
+        
+        if choice_index == len(options) - 1:  # [0] 戻る
             return
         
         if choice_index == 0:  # none
@@ -383,19 +408,25 @@ def show_date_filter_menu(settings: DateFilterSettings):
     
     while True:
         print(f"現在の設定: {settings.format_status()}")
-        options = [
-            "[1] all（すべての日付）",
-            "[2] from（開始日時を設定）",
-            "[3] to（終了日時を設定）"
-        ]
+        options = []
+        
+        # 當前の設定状態を表示しながらメニュー項目を作成
+        is_all = not settings.filter_settings
+        _add_menu_option(options, 1, is_all, "all（すべての日付）")
+        _add_menu_option(options, 2, settings.has_from(), "from（開始日時を設定）")
+        _add_menu_option(options, 3, settings.has_to(), "to（終了日時を設定）")
+        _add_menu_option(options, 0, False, "戻る")
         terminal_menu = TerminalMenu(
             options,
-            title="日付フィルター方式を選択してください (数字キー: 直接選択, ↑↓: 移動, Enter: 決定, Esc: 戻る):",
+            title="日付フィルター方式を選択してください:",
             show_search_hint=True
         )
         choice_index = terminal_menu.show()
         
         if choice_index is None:
+            return
+        
+        if choice_index == len(options) - 1:  # [0] 戻る
             return
         
         if choice_index == 0:  # all
@@ -572,15 +603,10 @@ def _show_weights_submenu(settings: SearchModeSettings):
         
         menu_items = []
         for i, (weights, description) in enumerate(preset_options, 1):
-            if weights == current_weights:
-                menu_items.append(f"[{i}] ● {description}")
-            else:
-                menu_items.append(f"[{i}] {description}")
+            _add_menu_option(menu_items, i, weights == current_weights, description)
         
-        menu_items.extend([
-            f"[{len(preset_options)+1}] カスタム重み入力",
-            f"[0] 戻る"
-        ])
+        _add_menu_option(menu_items, len(preset_options)+1, False, "カスタム重み入力")
+        _add_menu_option(menu_items, 0, False, "戻る")
         
         terminal_menu = TerminalMenu(menu_items, title="重み設定を選択してください:", show_search_hint=True)
         choice = terminal_menu.show()
