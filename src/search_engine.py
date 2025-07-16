@@ -47,6 +47,7 @@ class SearchEngine:
         self.user_list: List[str] = []
         self.tags_data: Dict[int, dict] = {}
         self.tag_index: Dict[str, List[int]] = {}
+        self.common_post_ids: Optional[List[int]] = None
         
         # ベクトルストア
         self.content_store = VectorStore(str(self.embeddings_dir))
@@ -114,9 +115,30 @@ class SearchEngine:
         # タグインデックスの構築
         self._build_tag_index()
         
+        # ハイブリッド検索用の共通post_idsを計算
+        self._calculate_common_post_ids()
+        
         # 初期化完了フラグ
         self.initialized = True
     
+    def _calculate_common_post_ids(self) -> None:
+        """
+        ハイブリッド検索用の共通post_idsを計算
+        content、reasoning、summaryが全て揃っている場合のみ計算
+        """
+        # 3つのベクトルストアが全て存在する場合のみ計算
+        if (self.reasoning_store is not None and 
+            self.summary_store is not None):
+            
+            content_ids = set(self.content_store.post_ids)
+            reasoning_ids = set(self.reasoning_store.post_ids)
+            summary_ids = set(self.summary_store.post_ids)
+            
+            # 3つのベクトルストアで共通のpost_idsを取得
+            common_ids = content_ids & reasoning_ids & summary_ids
+            self.common_post_ids = sorted(list(common_ids))
+        else:
+            self.common_post_ids = None
     
     def is_text_match(self, content: str, include_terms: List[str], exclude_terms: List[str]) -> bool:
         """
@@ -208,65 +230,39 @@ class SearchEngine:
         
         # 統合モード
         elif mode in ["average", "product", "weighted"]:
+            # ハイブリッド検索には共通post_idsが必要
+            if self.common_post_ids is None:
+                raise ValueError(f"Hybrid mode '{mode}' requires all vector stores (content, reasoning, summary) to be available")
+            
             import torch
             import torch.nn.functional as F
             
-            # 各ストアからベクトルを取得
-            content_vectors = self.content_store.vectors
-            reasoning_vectors = None
-            summary_vectors = None
-            common_post_ids = self.content_store.post_ids
-            
-            if self.reasoning_store is not None:
-                reasoning_vectors = self.reasoning_store.vectors
-                # 共通のpost_idのみを取得
-                common_post_ids = list(set(common_post_ids) & set(self.reasoning_store.post_ids))
-            
-            if self.summary_store is not None:
-                summary_vectors = self.summary_store.vectors
-                # 共通のpost_idのみを取得
-                common_post_ids = list(set(common_post_ids) & set(self.summary_store.post_ids))
-            
             # 共通post_idに対応するベクトルを取得
             similarities = []
-            for post_id in common_post_ids:
-                sims = []
-                
+            for post_id in self.common_post_ids:
                 vec = self.content_store.get_vector(post_id)
-                if vec is not None:
-                    sim = F.cosine_similarity(vec, query_vector, dim=0)
-                    sims.append(sim.item())
+                c = F.cosine_similarity(vec, query_vector, dim=0).item()
                 
-                if reasoning_vectors is not None:
-                    vec = self.reasoning_store.get_vector(post_id)
-                    if vec is not None:
-                        sim = F.cosine_similarity(vec, query_vector, dim=0)
-                        sims.append(sim.item())
+                vec = self.reasoning_store.get_vector(post_id)
+                r = F.cosine_similarity(vec, query_vector, dim=0).item()
                 
-                if summary_vectors is not None:
-                    vec = self.summary_store.get_vector(post_id)
-                    if vec is not None:
-                        sim = F.cosine_similarity(vec, query_vector, dim=0)
-                        sims.append(sim.item())
+                vec = self.summary_store.get_vector(post_id)
+                s = F.cosine_similarity(vec, query_vector, dim=0).item()
                 
-                if sims:
-                    # 統合方法に応じて計算
-                    if mode == "average":
-                        final_sim = sum(sims) / len(sims)
-                    elif mode == "product":
-                        final_sim = 1.0
-                        for sim in sims:
-                            final_sim *= sim
-                    elif mode == "weighted":
-                        if weights is None:
-                            weights = [0.7, 0.2, 0.1]
-                        weights = weights[:len(sims)]
-                        weight_sum = sum(weights)
-                        if weight_sum > 0:
-                            weights = [w / weight_sum for w in weights]
-                        final_sim = sum(sim * weight for sim, weight in zip(sims, weights))
-                    
-                    similarities.append((post_id, final_sim))
+                # 統合方法に応じて計算
+                if mode == "average":
+                    final_sim = (c + r + s) / 3
+                elif mode == "product":
+                    final_sim = c * r * s
+                elif mode == "weighted":
+                    if weights is None:
+                        weights = [0.7, 0.2, 0.1]
+                    weight_sum = sum(weights)
+                    if weight_sum > 0:
+                        weights = [w / weight_sum for w in weights]
+                    final_sim = c * weights[0] + r * weights[1] + s * weights[2]
+                
+                similarities.append((post_id, final_sim))
             
             # 類似度で降順ソート
             similarities.sort(key=lambda x: x[1], reverse=True)
@@ -320,6 +316,11 @@ class SearchEngine:
         
         # ベクトル検索クエリをベクトル化
         query_vector = self._embed_text(vector_query)
+        
+        # クエリベクトルの形状を調整（ハイブリッドモード対応）
+        if hasattr(query_vector, 'squeeze') and hasattr(query_vector, 'dim'):
+            if query_vector.dim() > 1:
+                query_vector = query_vector.squeeze()
         
         # モードの妥当性チェック
         self._validate_search_mode(mode)
