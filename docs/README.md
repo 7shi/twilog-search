@@ -92,6 +92,17 @@ SearchEngine統合とMCP互換メソッド追加によるTwilogServerの包括�
 - 条件付きベクトル読み込みによる段階的機能提供
 - ベクトル/テキスト検索の統一インターフェース
 
+### [20250716-mode-optimization.md](20250716-mode-optimization.md)
+**ハイブリッド検索モードの実用性検証と最適化レポート**
+
+実測テストに基づくハイブリッド検索モードの実用性検証と最適化。product・harmonicモード削除、weighted統合、maximum・minimum追加による効率的な6モード構成の確立。
+
+**主要技術**：
+- 実測データによる検索モード評価分析
+- API簡潔化によるweighted機能統合
+- maximum・minimumモードによる検索戦略多様化
+- 計算効率向上と実用的価値の最大化
+
 ## 技術的な関連性
 
 これらのレポートは以下の技術的な関連性を持っています：
@@ -103,6 +114,7 @@ SearchEngine統合とMCP互換メソッド追加によるTwilogServerの包括�
 5. **検索機能拡張**：hybrid-search.md による複合検索の実現
 6. **アーキテクチャ革新**：generator-unification.md による処理統一化の完成
 7. **ハイブリッド検索完成**：20250715-hybrid-search.md によるマルチベクトル検索の実現
+8. **検索システム最適化**：20250716-mode-optimization.md による実用性向上と効率化
 
 ## 開発思想
 

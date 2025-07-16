@@ -185,7 +185,7 @@ class SearchEngine:
         
         # 統合モード（2つ以上のベクトルが必要）
         if len(available_modes) >= 2:
-            available_modes.extend(["average", "product", "weighted"])
+            available_modes.extend(["average", "maximum", "minimum"])
         
         return available_modes
     
@@ -229,7 +229,7 @@ class SearchEngine:
             return []
         
         # 統合モード
-        elif mode in ["average", "product", "weighted"]:
+        elif mode in ["average", "maximum", "minimum"]:
             # ハイブリッド検索には共通post_idsが必要
             if self.common_post_ids is None:
                 raise ValueError(f"Hybrid mode '{mode}' requires all vector stores (content, reasoning, summary) to be available")
@@ -251,16 +251,19 @@ class SearchEngine:
                 
                 # 統合方法に応じて計算
                 if mode == "average":
-                    final_sim = (c + r + s) / 3
-                elif mode == "product":
-                    final_sim = c * r * s
-                elif mode == "weighted":
                     if weights is None:
-                        weights = [0.7, 0.2, 0.1]
-                    weight_sum = sum(weights)
-                    if weight_sum > 0:
-                        weights = [w / weight_sum for w in weights]
-                    final_sim = c * weights[0] + r * weights[1] + s * weights[2]
+                        # デフォルトは均等重み
+                        final_sim = (c + r + s) / 3
+                    else:
+                        # 重み付き平均
+                        weight_sum = sum(weights)
+                        if weight_sum > 0:
+                            weights = [w / weight_sum for w in weights]
+                        final_sim = c * weights[0] + r * weights[1] + s * weights[2]
+                elif mode == "maximum":
+                    final_sim = max(c, r, s)
+                elif mode == "minimum":
+                    final_sim = min(c, r, s)
                 
                 similarities.append((post_id, final_sim))
             
@@ -288,7 +291,7 @@ class SearchEngine:
             return mode
         
         # ハイブリッドモードはテキスト検索では不可能
-        elif mode in ["average", "product", "weighted"]:
+        elif mode in ["average", "maximum", "minimum"]:
             raise ValueError(f"Hybrid mode '{mode}' is not supported for text search. Use vector search instead.")
         
         else:
@@ -301,8 +304,8 @@ class SearchEngine:
         Args:
             query: クエリ文字列（V|T形式対応）
             top_k: 取得件数制限
-            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
-            weights: 重み付けモード用の重み（合計1.0）
+            mode: 検索モード ("content", "reasoning", "summary", "average", "maximum", "minimum")
+            weights: average モード用の重み（合計1.0、Noneの場合は均等重み）
             
         Returns:
             (post_id, similarity)のタプルリスト
@@ -422,8 +425,8 @@ class SearchEngine:
         Args:
             query: クエリ文字列（V|T形式対応）
             search_settings: 検索設定
-            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
-            weights: 重み付けモード用の重み（合計1.0）
+            mode: 検索モード ("content", "reasoning", "summary", "average", "maximum", "minimum")
+            weights: average モード用の重み（合計1.0、Noneの場合は均等重み）
             
         Returns:
             (rank, similarity, post_info)のタプルリスト

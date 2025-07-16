@@ -46,8 +46,8 @@ class BaseEmbedServer():
             await send_json(websocket, {"type": "progress", "message": message})
             await websocket.close()
         except Exception:
-            # フロント側が利用できない場合は無視
-            pass
+            # フロント側が利用できない場合は標準エラー出力に出力
+            print(message, file=sys.stderr)
     
     async def notify_frontend_completion(self):
         """フロント側WebSocketサーバーに初期化完了を通知"""

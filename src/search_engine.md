@@ -106,3 +106,8 @@
 **Problem**: ハイブリッド検索モードで「a Tensor with 768 elements cannot be converted to Scalar」エラーが発生していた。原因は`self._embed_text()`が返すクエリベクトルの形状が`torch.Size([1, 768])`（2次元）だったため、`F.cosine_similarity(...).item()`でスカラー変換に失敗していた。
 
 **Solution**: `vector_search`メソッドでクエリベクトルの形状を自動正規化する処理を追加。`query_vector.squeeze()`により多次元テンソルを1次元に変換し、ハイブリッドモードでのコサイン類似度計算を安定化。これにより、6種類全ての検索モード（content、reasoning、summary、average、product、weighted）が正常動作し、完全なハイブリッド検索システムが実現された。
+
+### ハイブリッド検索モードの最適化と統合
+**Problem**: productとharmonicモードがaverageモードとほぼ同じランキングを返すため実用的価値が低く、weightedモードが独立存在することでAPI複雑性が増大していた。また、真に差別化された検索結果を提供するモードが不足していた。
+
+**Solution**: 実測テスト結果に基づき、productとharmonicモードを削除し、weightedモードをaverageモードに統合（weights=Noneで均等重み、weights指定で重み付き平均）。新たにmaximum（最高類似度採用）とminimum（最低類似度採用）モードを追加し、明確に差別化された6種類の検索モード（content、reasoning、summary、average、maximum、minimum）による効率的なハイブリッド検索システムを確立。詳細な検証結果と最適化過程については[モード最適化レポート](../docs/20250716-mode-optimization.md)を参照。
