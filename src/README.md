@@ -7,7 +7,7 @@
 ### 主要処理フロー
 - **vectorize.py** - CSVから直接ベクトル化、中断・再開機能対応
 - **twilog_server.py** - embed_server.pyを継承した統合検索サーバー、SearchEngine統合、MCP互換メソッド提供、meta.jsonからCSVパス自動取得
-- **search.py** - 軽量化された対話的検索フロントエンド、twilog_server.pyのsearch_similarメソッド使用、設定機能復活
+- **search.py** - 軽量化された対話的検索フロントエンド、twilog_server.pyのsearch_similarメソッド使用
 - **add_tags.py** - data_csv.pyを使用、CSVファイルから直接データ読み込み、strip_content関数で前処理適用、タグ付け（オプション）
 
 ### バッチ処理パイプライン（batch_*）
@@ -20,18 +20,16 @@
 ### ベクトル化基盤（embed_*）
 - **embed_server.py**: ベクトル化サーバーの基盤実装、デーモン管理、WebSocket通信、エラーハンドリング
 - **embed_client.py**: ベクトル化サーバーへのクライアント基盤実装、WebSocket通信抽象化
-
-### Twilog特化実装（twilog_*）
-- **twilog_server.py**: embed_server.pyを継承した統合検索サーバー、SearchEngine統合、MCP互換メソッド提供、meta.jsonからCSVパス自動取得
 - **twilog_client.py**: embed_client.pyを継承したTwilog検索クライアント、SearchSettings対応
 
 ### 検索関連（search_*）
-- **search.py**: 軽量化された対話的検索フロントエンド、twilog_server.pyのsearch_similarメソッド使用、設定機能復活
 - **search_engine.py**: ベクトル検索結果の絞り込み・フィルタリング・重複除去、ステートレス設計
+- **vector_store.py**: ベクトルストア管理機能
 
 ### 設定管理（settings_*）
 - **settings.py**: SearchSettings統合管理、シリアライズ対応、ユーザー・日付フィルタリング設定
 - **settings_ui.py**: 設定UI機能の純粋関数群、search.pyで使用
+- **user_info.py**: ユーザー情報管理クラス、Tab補完機能（キャッシュ機能付き）、レーベンシュタイン距離による類似ユーザー提案
 
 ### データアクセス（data_*）
 - **data_csv.py**: CSVファイルから直接データを読み込む専用のデータアクセス層
@@ -63,4 +61,3 @@
 ## データファイル
 - **標準データファイル**: `twilog.csv`（デフォルト、引数省略可能）
 - **データ形式**: CSVベース（SQLiteデータベース不要）
-
