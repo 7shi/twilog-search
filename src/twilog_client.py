@@ -8,6 +8,7 @@ TwilogServerの全メソッドをサポート:
 - get_user_stats: ユーザー統計
 - get_database_stats: データベース統計
 - search_posts_by_text: テキスト検索
+- get_user_list: ユーザー一覧取得
 - get_status: サーバー状態確認
 - embed_text: テキストベクトル化
 """
@@ -160,23 +161,6 @@ class TwilogClient(EmbedClient):
             RuntimeError: サーバーエラーまたは通信エラー
         """
         return await self._send_request("get_user_list", {})
-    
-    @rpc_method
-    async def suggest_users(self, user_list: list) -> dict:
-        """
-        存在しないユーザーに対して類似ユーザーを提案
-        
-        Args:
-            user_list: チェック対象のユーザー名リスト
-            
-        Returns:
-            存在しないユーザー名をキーとし、類似ユーザー上位5人をリストとする辞書
-            
-        Raises:
-            RuntimeError: サーバーエラーまたは通信エラー
-        """
-        params = {"user_list": user_list}
-        return await self._send_request("suggest_users", params)
 
 
 class TwilogCommand(EmbedCommand):
@@ -234,9 +218,8 @@ class TwilogCommand(EmbedCommand):
                                            choices=['content', 'reasoning', 'summary'],
                                            help='検索対象ソース (デフォルト: content)')
             
-            # suggest_users command
-            suggest_parser = subparsers.add_parser('suggest_users', help='類似ユーザーを提案')
-            suggest_parser.add_argument('users', nargs='+', help='チェック対象のユーザー名（スペース区切り）')
+            # get_user_list command
+            subparsers.add_parser('get_user_list', help='ユーザー一覧を取得')
         
         return parser
     
@@ -292,18 +275,20 @@ class TwilogCommand(EmbedCommand):
             print(f"    {content}...")
     
     @rpc_method
-    async def suggest_users(self, args) -> None:
-        """suggest_usersコマンドの処理"""
-        results = await self.client.suggest_users(args.users)
-        if not results:
-            print("すべてのユーザーが存在します")
-            return
+    async def get_user_list(self, args) -> None:
+        """get_user_listコマンドの処理"""
+        results = await self.client.get_user_list()
+        total_users = len(results)
+        print(f"ユーザー一覧: 総数 {total_users}人")
         
-        print(f"存在しないユーザー: {len(results)}人")
-        for missing_user, suggestions in results.items():
-            print(f"\n'{missing_user}' の類似ユーザー:")
-            for i, suggested_user in enumerate(suggestions, 1):
-                print(f"  {i}. {suggested_user}")
+        # 最初の10件を表示
+        for i, user in enumerate(results[:10], 1):
+            print(f"{i:2d}. {user}")
+        
+        # 10件超過の場合は縦点を表示
+        if total_users > 10:
+            print("    ...")
+            print(f"(総数: {total_users}人)")
 
 
 async def main():

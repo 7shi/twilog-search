@@ -12,6 +12,7 @@ from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k
 from settings import DEFAULT_MODE, SearchSettings
 from twilog_client import TwilogClient
 from safe_input import safe_text_input
+from user_info import UserInfo
 
 
 async def test_websocket_connection(client):
@@ -71,8 +72,19 @@ def main():
     
     search_settings = SearchSettings()
     search_settings.mode_settings.set_mode(initial_mode)
-
-    print(f"リモート検索システム準備完了")
+    
+    # ユーザー一覧を取得してUserInfoインスタンスを作成
+    try:
+        user_list = asyncio.run(client.get_user_list())
+        print(f"ユーザー一覧取得完了: {len(user_list)}件")
+    except Exception as e:
+        print(f"ユーザー一覧取得エラー: {e}")
+        user_list = []
+    
+    user_info = UserInfo(user_list)
+    
+    print("リモート検索システム準備完了")
+    print()
     print("検索クエリを入力してください")
     print("特殊コマンド: /help でヘルプ表示")
     
@@ -113,13 +125,7 @@ def main():
                 show_help()
                 continue
             elif command == "user":
-                # ユーザー一覧を取得して補完機能に渡す
-                try:
-                    user_list = asyncio.run(client.get_user_list())
-                except Exception as e:
-                    print(f"ユーザー一覧取得エラー: {e}")
-                    user_list = None
-                show_user_filter_menu(search_settings.user_filter, client.suggest_users, user_list)
+                show_user_filter_menu(search_settings.user_filter, user_info)
                 continue
             elif command == "date":
                 show_date_filter_menu(search_settings.date_filter)

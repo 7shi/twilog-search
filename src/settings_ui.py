@@ -75,7 +75,7 @@ def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_us
             # 新しいユーザー名で再度suggest_usersを呼び出し
             if suggest_users_func is not None:
                 try:
-                    suggestions_result = asyncio.run(suggest_users_func([new_user]))
+                    suggestions_result = suggest_users_func([new_user])
                     if new_user in suggestions_result:
                         # 新しいユーザーも存在しない場合、候補を更新してループ継続
                         current_user = new_user
@@ -105,7 +105,7 @@ def _handle_user_input_with_suggestions(
     suggest_users_func, 
     current_users_func, 
     filter_type: str,
-    user_list=None
+    user_info=None
 ) -> tuple:
     """
     ユーザー入力を処理し、存在しないユーザーに対して候補を表示
@@ -116,14 +116,14 @@ def _handle_user_input_with_suggestions(
         suggest_users_func: suggest_users関数オブジェクト
         current_users_func: 現在の設定値を取得する関数
         filter_type: フィルタータイプ（"includes" or "excludes"）
-        user_list: ユーザー名補完用のユーザー一覧（オプション）
+        user_info: ユーザー情報インスタンス（オプション）
         
     Returns:
         (success: bool, users: list or None)
     """
     # ユーザー一覧が提供されている場合は補完機能付きの入力を使用
-    if user_list:
-        users_input = safe_text_input_with_user_completion(prompt, history, user_list)
+    if user_info:
+        users_input = safe_text_input_with_user_completion(prompt, history, user_info)
     else:
         users_input = safe_text_input(prompt, history)
     
@@ -135,7 +135,7 @@ def _handle_user_input_with_suggestions(
         # suggest_users_funcが提供されている場合、ユーザー存在チェック
         if suggest_users_func is not None:
             try:
-                suggestions = asyncio.run(suggest_users_func(users))
+                suggestions = suggest_users_func(users)
                 
                 # 存在しないユーザーがある場合
                 if suggestions:
@@ -179,7 +179,7 @@ def _handle_user_input_with_suggestions(
         return False, None  # メニューに戻る
 
 
-def show_user_filter_menu(settings: UserFilterSettings, suggest_users_func=None, user_list=None):
+def show_user_filter_menu(settings: UserFilterSettings, user_info=None):
     """ユーザーフィルタリングメニューを表示"""
     while True:
         print(f"\n=== ユーザーフィルタリング設定 ===")
@@ -210,11 +210,11 @@ def show_user_filter_menu(settings: UserFilterSettings, suggest_users_func=None,
             return  # noneは即座に抜ける
             
         elif choice_index == 1:  # includes
-            if _handle_includes(settings, suggest_users_func, user_list):
+            if _handle_includes(settings, user_info):
                 return  # includes設定完了時は即座に抜ける
             
         elif choice_index == 2:  # excludes
-            if _handle_excludes(settings, suggest_users_func, user_list):
+            if _handle_excludes(settings, user_info):
                 return  # excludes設定完了時は即座に抜ける
             
         elif choice_index == 3:  # threshold min
@@ -224,15 +224,16 @@ def show_user_filter_menu(settings: UserFilterSettings, suggest_users_func=None,
             _handle_threshold_max(settings)
 
 
-def _handle_includes(settings: UserFilterSettings, suggest_users_func=None, user_list=None):
+def _handle_includes(settings: UserFilterSettings, user_info=None):
     """includes設定の処理"""
+    suggest_users_func = user_info.suggest_users if user_info else None
     success, users = _handle_user_input_with_suggestions(
         "ユーザー名をコンマ区切りで入力: ",
         "user",
         suggest_users_func,
         lambda: settings.get_includes() if settings.has_includes() else [],
         "includes",
-        user_list
+        user_info
     )
     
     if not success:
@@ -255,15 +256,16 @@ def _handle_includes(settings: UserFilterSettings, suggest_users_func=None, user
     return False  # メニューに戻る
 
 
-def _handle_excludes(settings: UserFilterSettings, suggest_users_func=None, user_list=None):
+def _handle_excludes(settings: UserFilterSettings, user_info=None):
     """excludes設定の処理"""
+    suggest_users_func = user_info.suggest_users if user_info else None
     success, users = _handle_user_input_with_suggestions(
         "除外ユーザー名をコンマ区切りで入力: ",
         "user",
         suggest_users_func,
         lambda: settings.get_excludes() if settings.has_excludes() else [],
         "excludes",
-        user_list
+        user_info
     )
     
     if not success:

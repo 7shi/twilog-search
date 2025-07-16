@@ -148,14 +148,6 @@ class TwilogServer(EmbedServer):
         # SearchEngineに委譲
         return self.search_engine.user_list
     
-    @rpc_method
-    async def suggest_users(self, user_list: list):
-        """存在しないユーザーに対して類似ユーザーを提案"""
-        if not user_list or not isinstance(user_list, list):
-            raise ValueError("user_list must be a non-empty list")
-        
-        # SearchEngineに委譲
-        return self.search_engine.suggest_users(user_list)
     
     @rpc_method
     async def get_status(self):

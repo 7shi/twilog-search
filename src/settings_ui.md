@@ -55,4 +55,9 @@
 ### ユーザー名Tab補完機能の統合
 **Problem**: ユーザー名入力時に正確な名前を覚えていない場合や、タイポが発生しやすい場合に、入力効率が低下している。既存の類似ユーザー提案機能はあるが、入力中のリアルタイム支援がなく、ユーザビリティが限定的だった。
 
-**Solution**: `safe_text_input_with_user_completion`関数をインポートし、ユーザー名補完機能を統合。`show_user_filter_menu`、`_handle_includes`、`_handle_excludes`関数にuser_listパラメータを追加し、`_handle_user_input_with_suggestions`関数でユーザー一覧が提供された場合（`if user_list:`）に補完付き入力を使用する条件分岐を実装。候補選択時の直接入力では補完機能を使用しない設計とし、適切な場面でのみ補完機能を提供。これにより、入力中のTab補完と入力後の類似ユーザー提案の二段階ユーザー支援システムを実現した。
+**Solution**: `safe_text_input_with_user_completion`関数をインポートし、ユーザー名補完機能を統合。`show_user_filter_menu`、`_handle_includes`、`_handle_excludes`関数にuser_infoパラメータを追加し、`_handle_user_input_with_suggestions`関数でUserInfoインスタンスが提供された場合（`if user_info:`）に補完付き入力を使用する条件分岐を実装。候補選択時の直接入力では補完機能を使用しない設計とし、適切な場面でのみ補完機能を提供。これにより、入力中のTab補完と入力後の類似ユーザー提案の二段階ユーザー支援システムを実現した。
+
+### suggest_users機能の外部化適応
+**Problem**: suggest_users機能がサーバー・クライアント実装からUserInfoクラスのローカル実装に変更されたが、settings_ui.pyではasyncio.runを使用した非同期呼び出しが残っており、同期関数に対する不適切な呼び出しが発生していた。
+
+**Solution**: UserInfoクラスのsuggest_usersメソッドが同期関数であることに合わせて、`asyncio.run(suggest_users_func(users))`を`suggest_users_func(users)`に変更し、直接呼び出しに修正。`_show_user_suggestions_menu`と`_handle_user_input_with_suggestions`の両方で同期呼び出しに統一し、エラーハンドリングも適切に動作するよう調整。これにより、ローカル実装による高速処理とサーバー通信の削減を実現した。

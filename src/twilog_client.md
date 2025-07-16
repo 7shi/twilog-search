@@ -70,12 +70,12 @@
 ### @rpc_methodデコレーターによる継承クライアントセキュリティ統一
 **Problem**: 基底クラス（EmbedClient）の`@rpc_method`デコレーター導入により、継承クライアント（TwilogClient）でも統一されたセキュリティモデルが必要になった。また、TwilogCommand側でも同様のセキュリティ制御が必要だった。
 
-**Solution**: TwilogClientの全RPCメソッド（`vector_search`、`search_similar`、`get_user_stats`、`get_database_stats`、`search_posts_by_text`、`suggest_users`）とTwilogCommandの対応するコマンドメソッドに`@rpc_method`デコレーターを追加。基底クラスの`execute`メソッドで実行される`_is_rpc_method`チェックにより、明示的にマークされたメソッドのみが呼び出し可能になり、継承階層全体で統一されたセキュリティが確保された。
+**Solution**: TwilogClientの全RPCメソッド（`vector_search`、`search_similar`、`get_user_stats`、`get_database_stats`、`search_posts_by_text`、`get_user_list`）とTwilogCommandの対応するコマンドメソッドに`@rpc_method`デコレーターを追加。基底クラスの`execute`メソッドで実行される`_is_rpc_method`チェックにより、明示的にマークされたメソッドのみが呼び出し可能になり、継承階層全体で統一されたセキュリティが確保された。
 
-### レーベンシュタイン距離による類似ユーザー検索機能
+### レーベンシュタイン距離による類似ユーザー検索機能（廃止）
 **Problem**: ユーザー名入力時のタイポや表記ゆれに対する支援機能が不足しており、存在しないユーザーが指定された場合に適切な候補提案ができず、ユーザー体験が低下していた。特にユーザーフィルタリング設定時に正確なユーザー名を覚えていない場合の操作性が課題だった。
 
-**Solution**: `suggest_users`メソッドを実装し、TwilogServerのレーベンシュタイン距離計算APIとの連携により類似ユーザー提案機能を提供。ユーザー名リストを送信し、存在しないユーザーに対して上位5人の類似候補を受け取る仕組みを構築。CLIコマンドでは`suggest_users user1 user2 unknownuser`形式で複数ユーザーを一括チェック可能とし、存在しないユーザーのみに対して類似候補を表示。タイポ修正支援により検索・フィルタリング機能の使いやすさを向上。
+**Solution**: 当初は`suggest_users`メソッドを実装し、TwilogServerのレーベンシュタイン距離計算APIとの連携により類似ユーザー提案機能を提供していた。しかし、user_listが取得できれば外部でより効率的に処理できることが判明したため、suggest_users機能をUserInfoクラスに移動し、サーバー・クライアント側の実装を削除。これにより、通信オーバーヘッドを削減し、ローカルでの高速処理を実現した。
 
 ### ハイブリッド検索システムのクライアント統合
 **Problem**: SearchEngineでハイブリッド検索システム（6種類の検索モード）が実装され、TwilogServerでRPC統合が完了したが、クライアント側でこれらの高度な検索機能を利用するためのインターフェースが不足していた。投稿内容・タグ付け理由・要約の3つのベクトル空間を活用した検索がクライアントから実行できない状況だった。
@@ -90,4 +90,4 @@
 ### ユーザー一覧取得機能の追加
 **Problem**: ユーザー名Tab補完機能の実装に伴い、クライアント側でサーバーから全ユーザーのリストを取得する必要が生じた。TwilogServerで`get_user_list`メソッドが実装されたが、クライアント側に対応するメソッドが存在しなかった。
 
-**Solution**: `get_user_list`メソッドを実装し、TwilogServerの`get_user_list`RPCメソッドとの連携によりユーザー名のリストを取得する機能を提供。パラメータなしでサーバーのSearchEngineが保持する`user_list`を直接取得し、クライアント側でユーザー名補完機能に活用。`@rpc_method`デコレーターを追加して統一されたセキュリティモデルに準拠。これにより、フロントエンドからサーバーの全ユーザー情報にアクセス可能となり、Tab補完機能の実装基盤を提供。
+**Solution**: `get_user_list`メソッドを実装し、TwilogServerの`get_user_list`RPCメソッドとの連携によりユーザー名のリストを取得する機能を提供。パラメータなしでサーバーのSearchEngineが保持する`user_list`を直接取得し、クライアント側でUserInfoクラスの初期化に活用。CLIコマンドでは最初の10件のみ表示し、総数を末尾に表示する見やすい形式を採用。`@rpc_method`デコレーターを追加して統一されたセキュリティモデルに準拠。これにより、フロントエンドからサーバーの全ユーザー情報にアクセス可能となり、Tab補完機能とローカルsuggest_users機能の実装基盤を提供。

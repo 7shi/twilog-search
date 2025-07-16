@@ -126,3 +126,8 @@
 **Problem**: 補助データ（reasoning、summary、tags）を管理する変数名が`tags_data`となっていたため、reasoningやsummaryデータも含むことが名前から分かりにくく、コードの理解性が低下していた。また、対応するメソッド名も`_load_tags_data`となっており、実際の処理内容との乖離があった。
 
 **Solution**: 変数名を`tags_data`から`summaries_data`に変更し、reasoning、summary、tagsの3種類のデータを含むことを明確化。対応するメソッド名も`_load_summaries_data`に変更し、実際の処理内容を正確に表現。全ての参照箇所を一貫して更新することで、コードの理解性とメンテナンス性を向上させた。タグインデックス構築処理も`summaries_data`からタグ情報を取得する形に統一し、データ管理の一元化を実現。
+
+### suggest_users機能の外部分離とアーキテクチャの簡素化
+**Problem**: suggest_users機能がSearchEngine、TwilogServer、TwilogClientに分散実装されており、user_listが取得できれば外部で処理できるにも関わらず、サーバー・クライアント間通信が必要だった。また、レーベンシュタイン距離計算のために検索エンジンに依存する必要があった。
+
+**Solution**: suggest_users機能をSearchEngineから完全に削除し、UserInfoクラスに移動。user_listのみを使用してローカルで類似ユーザーを提案する軽量な実装に変更。サーバー・クライアント側のsuggest_users関連メソッドとコマンドを削除し、通信オーバーヘッドを排除。これにより、SearchEngineの責務を純粋な検索処理に集中させ、ユーザー管理機能を適切に分離したクリーンなアーキテクチャを実現。

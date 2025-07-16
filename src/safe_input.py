@@ -57,21 +57,6 @@ readline.set_completer(None)
 # グローバルな履歴管理インスタンス
 history_manager = HistoryManager()
 
-# ユーザー名補完用のグローバル変数
-_user_completion_list = []
-
-def _user_completer(text, state):
-    """ユーザー名補完関数"""
-    global _user_completion_list
-    
-    # 入力テキストに基づいて候補を絞り込み
-    matches = [user for user in _user_completion_list if user.startswith(text)]
-    
-    # state番目の候補を返す
-    if state < len(matches):
-        return matches[state]
-    else:
-        return None
 
 
 def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
@@ -107,13 +92,8 @@ def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
             readline.add_history(item)
 
 
-def safe_text_input_with_user_completion(prompt, history: str, user_list, validator=None, handle_eof=True):
+def safe_text_input_with_user_completion(prompt, history: str, user_info, validator=None, handle_eof=True):
     """ユーザー名補完機能付きの安全なテキスト入力"""
-    global _user_completion_list
-    
-    # 補完候補を設定
-    _user_completion_list = user_list if user_list else []
-    
     # 指定された履歴コンテキストに切り替え
     saved_history = history_manager.set_history(history)
     
@@ -123,16 +103,17 @@ def safe_text_input_with_user_completion(prompt, history: str, user_list, valida
     
     try:
         # ユーザー名補完を設定
-        readline.set_completer(_user_completer)
-        readline.set_completer_delims(' \t\n,')  # コンマ区切り対応
-        
-        # readline補完を有効化
-        readline.parse_and_bind("tab: complete")
-        
-        # 補完機能の案内
-        if len(_user_completion_list) > 0:
-            console = Console()
-            console.print(f"[dim]Tabキーでユーザー名補完を使用できます ({len(_user_completion_list)}件)[/dim]")
+        if user_info:
+            readline.set_completer(user_info.user_completer)
+            readline.set_completer_delims(' \t\n,')  # コンマ区切り対応
+            
+            # readline補完を有効化
+            readline.parse_and_bind("tab: complete")
+            
+            # 補完機能の案内
+            if len(user_info.user_list) > 0:
+                console = Console()
+                console.print(f"[dim]Tabキーでユーザー名補完を使用できます ({len(user_info.user_list)}件)[/dim]")
         
         while True:
             try:

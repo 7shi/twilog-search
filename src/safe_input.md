@@ -55,3 +55,8 @@
 **Problem**: ユーザー名入力時に正確な名前を覚えていない場合や、タイポが発生しやすい場合に、入力効率が低下している。
 
 **Solution**: `safe_text_input_with_user_completion`関数を実装し、ユーザー名のTab補完機能を提供。readlineの`set_completer`と`_user_completer`関数を使用して前方一致によるユーザー名候補を表示し、コンマ区切りの複数入力にも対応。`parse_and_bind("tab: complete")`で補完機能を有効化し、入力完了後は`parse_and_bind("tab: self-insert")`で無効化することで、他の入力場面への影響を防止。補完設定の保存・復元により既存システムとの完全な統合を実現した。
+
+### UserInfoクラス統合によるユーザー情報管理の改善
+**Problem**: グローバル変数`_user_completion_list`と関数`_user_completer`を使用したユーザー名補完機能は、状態管理が分散しており、コードの再利用性と保守性が低下していた。また、ユーザー一覧の更新や補完機能の拡張が困難だった。
+
+**Solution**: UserInfoクラスとの統合により、ユーザー情報管理を一元化。`safe_text_input_with_user_completion`関数はUserInfoインスタンスを受け取り、`user_info.user_completer`メソッドを`set_completer`に直接設定する設計に変更。グローバル変数を完全に削除し、ユーザー一覧の管理、補完機能、類似ユーザー提案機能を単一のクラスに集約。これにより、コードの理解性と保守性が向上し、ユーザー関連機能の拡張が容易になった。

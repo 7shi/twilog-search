@@ -107,3 +107,8 @@
 **Problem**: `/user`コマンドでユーザー名入力時に、正確なユーザー名を覚えていない場合やタイポが発生しやすい場合に、入力効率が低下していた。既存の類似ユーザー提案機能はあるが、入力中のリアルタイム支援がなく、ユーザビリティが限定的だった。
 
 **Solution**: `client.get_user_list()`でサーバーから全ユーザー一覧を取得し、`show_user_filter_menu`の第3引数として渡す仕組みを実装。取得エラー時はNoneを渡すことで、補完機能なしで通常の入力処理を継続。これにより、入力中のTab補完と入力後の類似ユーザー提案を組み合わせた二段階ユーザー支援システムを実現し、ユーザー名入力の効率と正確性を大幅に向上させた。
+
+### UserInfoクラスによるユーザー情報管理の一元化
+**Problem**: ユーザー名補完機能とsuggest_users機能が個別に実装されており、ユーザー情報の管理が分散していた。また、user_listが取得できれば外部で処理できるsuggest_users機能がサーバー・クライアント間通信を必要とし、非効率だった。
+
+**Solution**: UserInfoクラスを導入し、ユーザー情報の一元管理を実現。起動時に`client.get_user_list()`で取得したユーザー一覧を`UserInfo(user_list)`でインスタンス化し、`show_user_filter_menu(search_settings.user_filter, user_info)`の形でUserInfoインスタンスを直接渡す設計に変更。UserInfoクラス内でuser_completer（Tab補完）とsuggest_users（類似ユーザー提案）の両機能を提供し、settings_ui.pyが内部でこれらを使い分ける。これにより、ユーザー情報の一元管理と処理効率の向上を両立し、サーバー・クライアント間通信を削減した。

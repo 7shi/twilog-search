@@ -624,39 +624,6 @@ class SearchEngine:
         
         return results[:limit]
     
-    def suggest_users(self, user_list: List[str]) -> Dict[str, List[str]]:
-        """
-        ユーザーのリストを受け取って存在しないユーザーに対してレーベンシュタイン距離で類似ユーザーを提案
-        
-        Args:
-            user_list: チェック対象のユーザー名リスト
-            
-        Returns:
-            存在しないユーザー名をキーとし、類似ユーザー上位5人をリストとする辞書
-        """
-        import Levenshtein
-        
-        # 存在しないユーザーを特定
-        missing_users = [user for user in user_list if user not in self.user_post_counts]
-        
-        result = {}
-        
-        for missing_user in missing_users:
-            # 全ユーザーとのレーベンシュタイン類似度を計算
-            similarities = []
-            for existing_user in self.user_list:
-                ratio = Levenshtein.ratio(missing_user, existing_user)
-                similarities.append((existing_user, ratio))
-            
-            # 類似度の降順でソート
-            similarities.sort(key=lambda x: x[1], reverse=True)
-            
-            # 上位5人を抽出
-            top_5 = [user for user, _ in similarities[:5]]
-            result[missing_user] = top_5
-        
-        return result
-    
     def _load_summaries_data(self) -> None:
         """batch/results.jsonlが存在すれば読み込む"""
         results_path = self.embeddings_dir.parent / "batch" / "results.jsonl"
