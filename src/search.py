@@ -9,9 +9,10 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
 from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k_menu, show_mode_menu
-from settings import SearchSettings
+from settings import DEFAULT_MODE, SearchSettings
 from twilog_client import TwilogClient
 from safe_input import safe_text_input
+
 
 async def test_websocket_connection(client):
     """WebSocketサーバーへの接続テスト"""
@@ -26,6 +27,7 @@ async def test_websocket_connection(client):
     if server_type != 'TwilogServer':
         raise RuntimeError(f"サーバータイプが 'TwilogServer' ではありません: {server_type}")
     
+    return result
 
 def show_help():
     """ヘルプメッセージを表示"""
@@ -54,15 +56,21 @@ def main():
     client = TwilogClient(args.server_url)
     try:
         print("WebSocketサーバーへの接続を確認中...")
-        asyncio.run(test_websocket_connection(client))
+        status = asyncio.run(test_websocket_connection(client))
         print("WebSocketサーバー接続成功")
     except Exception as e:
         print(f"WebSocketサーバー接続失敗: {e}")
         print("WebSocketサーバーが利用できません。twilog_server.py start でデーモンを起動してください。")
         sys.exit(1)
     
-    # 検索設定の初期化
+    # 検索設定の初期化（data_statsに基づいてモードを決定）
+    initial_mode = DEFAULT_MODE
+    data_stats = status.get('data_stats', {})
+    if data_stats.get('total_summaries', 0) > 0:
+        initial_mode = "maximum"
+    
     search_settings = SearchSettings()
+    search_settings.mode_settings.set_mode(initial_mode)
 
     print(f"リモート検索システム準備完了")
     print("検索クエリを入力してください")
@@ -82,7 +90,7 @@ def main():
             restrictions.append(f"ユーザー: {user_status}")
         if date_status != "すべての日付":
             restrictions.append(f"日付: {date_status}")
-        if mode_status != "average":
+        if mode_status != DEFAULT_MODE:
             restrictions.append(f"モード: {mode_status}")
         
         if restrictions:

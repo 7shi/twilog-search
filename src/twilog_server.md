@@ -124,3 +124,8 @@
 
 **Solution**: `vector_search`と`search_similar`メソッドに`mode`パラメータ（デフォルト: "content"）と`weights`パラメータ（デフォルト: None）を追加。`search_posts_by_text`メソッドに`source`パラメータ（デフォルト: "content"）を追加し、3つのソース（content、reasoning、summary）からのテキスト検索を可能にした。これにより、6種類の検索モード（content、reasoning、summary、average、product、weighted）がすべてRPC経由で利用可能となり、クライアント・MCP両方から統一されたハイブリッド検索機能を提供。
 
+### データ統計情報の拡張ステータス提供
+**Problem**: 基底クラスの`get_status`メソッドでは基本的なサーバー情報（status、ready、server_type、model）のみが提供されており、Twilog固有のデータ統計情報が不足していた。クライアント側でデータの利用可能性を判断する情報が不足し、適応的な機能選択ができなかった。
+
+**Solution**: `get_status`メソッドをオーバーライドし、基底クラスの情報に加えて`data_stats`フィールドを追加。SearchEngineが初期化されている場合に限り、`total_posts`（投稿数）、`total_users`（ユーザー数）、`total_summaries`（要約データ数）、`total_tags`（タグ数）の統計情報を提供。これにより、クライアント側でreasoning/summaryデータの利用可能性を判断でき、適応的な検索モード選択（total_summaries > 0の場合はmaximumモード）を実現。サーバー側のデータ構成に応じた動的な機能提供を可能にした。
+

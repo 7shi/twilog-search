@@ -50,4 +50,9 @@
 ### 検索モード設定の統合
 **Problem**: ハイブリッド検索モードの組み込みに伴い、検索モード（content、reasoning、summary、average、maximum、minimum）と重み設定（averageモード時のweights）を管理する必要が生じた。これらの設定が既存のSearchSettingsクラスに統合されていないと、設定の受け渡しや管理が煩雑になる。
 
-**Solution**: SearchModeSettingsクラスを新設し、検索モードと重み設定を統合管理する設計を採用。デフォルトモードを「average」とし、重み設定は[1.0, 1.0, 1.0]の均等重みを初期値とした。set_mode()メソッドでaverageモード以外では重みを自動的にクリアし、set_weights()メソッドでaverageモード時のみ重みを正規化して設定する機能を実装。get_weights()メソッドでは均等重み以外の場合のみ重みを返し、format_status()メソッドで重み設定を含む状態表示を提供。SearchSettingsクラスのmode_settingsとして統合し、シリアライズ・デシリアライズ機能も追加することで、既存の設定管理アーキテクチャと一貫した動作を実現した。
+**Solution**: SearchModeSettingsクラスを新設し、検索モードと重み設定を統合管理する設計を採用。デフォルトモードを「content」とし、重み設定は[1.0, 1.0, 1.0]の均等重みを初期値とした。set_mode()メソッドでaverageモード以外では重みを自動的にクリアし、set_weights()メソッドでaverageモード時のみ重みを正規化して設定する機能を実装。get_weights()メソッドでは均等重み以外の場合のみ重みを返し、contentモードなど重み設定が無意味な場合はNoneを返す。format_status()メソッドで重み設定を含む状態表示を提供。SearchSettingsクラスのmode_settingsとして統合し、シリアライズ・デシリアライズ機能も追加することで、既存の設定管理アーキテクチャと一貫した動作を実現した。
+
+### デフォルトモードの一元管理と適応的設定
+**Problem**: デフォルトの検索モードが複数箇所にハードコードされており、変更時の修正漏れが発生しやすい構造だった。また、Search.pyとsettings.pyで異なるデフォルトモードを使用する必要があり、設定の一貫性が確保できなかった。
+
+**Solution**: `DEFAULT_MODE`定数を導入し、デフォルト検索モードを一元管理する設計を採用。SearchModeSettingsのコンストラクタとfrom_dict()メソッドでDEFAULT_MODEを使用することで、デフォルト値の変更が単一箇所で済む保守性を実現。search.pyでは"maximum"、settings.pyでは"content"の異なるDEFAULT_MODEを定義し、各モジュールの要件に応じた適応的なデフォルト値設定を可能にした。これにより、コード変更時の修正箇所を最小化し、モジュール間の設定一貫性を保持した。

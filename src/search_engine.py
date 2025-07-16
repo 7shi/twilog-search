@@ -45,7 +45,7 @@ class SearchEngine:
         self.post_user_map: dict = {}
         self.user_post_counts: dict = {}
         self.user_list: List[str] = []
-        self.tags_data: Dict[int, dict] = {}
+        self.summaries_data: Dict[int, dict] = {}
         self.tag_index: Dict[str, List[int]] = {}
         
         # ベクトルストア
@@ -115,7 +115,7 @@ class SearchEngine:
                 self.summary_store.load_vectors()
         
         # タグデータの読み込み
-        self._load_tags_data()
+        self._load_summaries_data()
         
         # タグインデックスの構築
         self._build_tag_index()
@@ -403,8 +403,8 @@ class SearchEngine:
             タグ情報が付加されたpost_info
         """
         post_id = post_info.get('post_id')
-        if post_id and post_id in self.tags_data:
-            post_info.update(self.tags_data[post_id])
+        if post_id and post_id in self.summaries_data:
+            post_info.update(self.summaries_data[post_id])
         return post_info
     
     def _generate_vector_results(self, query: str, mode: str = "content", weights: List[float] = None) -> Generator[Tuple[dict, float], None, None]:
@@ -572,13 +572,13 @@ class SearchEngine:
             return self.data_access.posts_data.get(post_id, {}).get("content", "")
         
         elif source in ["reasoning", "summary"]:
-            if post_id not in self.tags_data:
+            if post_id not in self.summaries_data:
                 return ""
             
             if source == "reasoning":
-                return self.tags_data[post_id]["reasoning"]
+                return self.summaries_data[post_id]["reasoning"]
             elif source == "summary":
-                return self.tags_data[post_id]["summary"]
+                return self.summaries_data[post_id]["summary"]
         
         return ""
     
@@ -614,8 +614,8 @@ class SearchEngine:
                 }
                 
                 # タグ情報を付加
-                if post_id in self.tags_data:
-                    result.update(self.tags_data[post_id])
+                if post_id in self.summaries_data:
+                    result.update(self.summaries_data[post_id])
                 
                 results.append(result)
         
@@ -657,7 +657,7 @@ class SearchEngine:
         
         return result
     
-    def _load_tags_data(self) -> None:
+    def _load_summaries_data(self) -> None:
         """batch/results.jsonlが存在すれば読み込む"""
         results_path = self.embeddings_dir.parent / "batch" / "results.jsonl"
         if not results_path.exists():
@@ -673,7 +673,7 @@ class SearchEngine:
                     
                     data = json.loads(line)
                     post_id = data["key"]
-                    self.tags_data[post_id] = {
+                    self.summaries_data[post_id] = {
                         "reasoning": data["reasoning"],
                         "summary": data["summary"],
                         "tags": data["tags"]
@@ -686,8 +686,8 @@ class SearchEngine:
         """タグから投稿IDへの逆引きインデックスを構築"""
         self.tag_index = {}
         
-        for post_id, tag_data in self.tags_data.items():
-            tags = tag_data.get("tags", [])
+        for post_id, summary_data in self.summaries_data.items():
+            tags = summary_data.get("tags", [])
             for tag in tags:
                 if tag not in self.tag_index:
                     self.tag_index[tag] = []

@@ -150,6 +150,22 @@ class TwilogServer(EmbedServer):
         
         # SearchEngineに委譲
         return self.search_engine.suggest_users(user_list)
+    
+    @rpc_method
+    async def get_status(self):
+        """ステータスを取得"""
+        status = await super().get_status()
+        
+        # SearchEngineが初期化されている場合、データ統計を追加
+        if self.search_engine and self.search_engine.initialized:
+            status["data_stats"] = {
+                "total_posts": len(self.search_engine.data_access.posts_data),
+                "total_users": len(self.search_engine.user_list),
+                "total_summaries": len(self.search_engine.summaries_data),
+                "total_tags": len(self.search_engine.tag_index)
+            }
+        
+        return status
 
 
 async def main():

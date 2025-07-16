@@ -6,6 +6,8 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
+DEFAULT_MODE = "content"
+
 
 class UserFilterSettings:
     """ユーザーフィルタリング設定クラス"""
@@ -280,7 +282,7 @@ class TopKSettings:
 class SearchModeSettings:
     """検索モード設定クラス"""
     
-    def __init__(self, mode: str = "average", weights: Optional[List[float]] = None):
+    def __init__(self, mode: str = DEFAULT_MODE, weights: Optional[List[float]] = None):
         """
         初期化
         
@@ -371,7 +373,7 @@ class SearchSettings:
         if "mode_settings" in data:
             mode_data = data["mode_settings"]
             settings.mode_settings = SearchModeSettings(
-                mode=mode_data.get("mode", "average"),
+                mode=mode_data.get("mode", DEFAULT_MODE),
                 weights=mode_data.get("weights", [1.0, 1.0, 1.0])
             )
         

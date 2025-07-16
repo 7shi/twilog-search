@@ -121,3 +121,8 @@
 **Problem**: productとharmonicモードがaverageモードとほぼ同じランキングを返すため実用的価値が低く、weightedモードが独立存在することでAPI複雑性が増大していた。また、真に差別化された検索結果を提供するモードが不足していた。
 
 **Solution**: 実測テスト結果に基づき、productとharmonicモードを削除し、weightedモードをaverageモードに統合（weights=Noneで均等重み、weights指定で重み付き平均）。新たにmaximum（最高類似度採用）とminimum（最低類似度採用）モードを追加し、明確に差別化された6種類の検索モード（content、reasoning、summary、average、maximum、minimum）による効率的なハイブリッド検索システムを確立。詳細な検証結果と最適化過程については[モード最適化レポート](../docs/20250716-mode-optimization.md)を参照。
+
+### タグデータ管理の一元化とメンテナンス性向上
+**Problem**: 補助データ（reasoning、summary、tags）を管理する変数名が`tags_data`となっていたため、reasoningやsummaryデータも含むことが名前から分かりにくく、コードの理解性が低下していた。また、対応するメソッド名も`_load_tags_data`となっており、実際の処理内容との乖離があった。
+
+**Solution**: 変数名を`tags_data`から`summaries_data`に変更し、reasoning、summary、tagsの3種類のデータを含むことを明確化。対応するメソッド名も`_load_summaries_data`に変更し、実際の処理内容を正確に表現。全ての参照箇所を一貫して更新することで、コードの理解性とメンテナンス性を向上させた。タグインデックス構築処理も`summaries_data`からタグ情報を取得する形に統一し、データ管理の一元化を実現。

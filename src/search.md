@@ -92,3 +92,8 @@
 **Problem**: ハイブリッド検索システムの最適化により、6種類の検索モード（content、reasoning、summary、average、maximum、minimum）と重み設定機能が利用可能になったが、search.pyでこれらの機能を選択・利用する手段が不足していた。
 
 **Solution**: `/mode`コマンドを追加し、`show_mode_menu`による検索モード選択機能を実装。SearchSettingsクラスにSearchModeSettingsを統合し、モード設定と重み設定を統一管理。検索実行時は`search_settings.mode_settings.get_mode()`と`search_settings.mode_settings.get_weights()`を取得し、TwilogClientの`search_similar`メソッドにmode/weights引数として渡す設計を採用。制限表示エリアにモード情報を追加し、デフォルトの「average」以外の場合は`[制限] モード: maximum`のように表示。数字キーショートカットと選択即完了の操作フローにより、効率的なモード変更を実現。詳細なUI設計は [docs/20250716-menu.md](../docs/20250716-menu.md) を参照。
+
+### 適応的初期モード設定
+**Problem**: reasoningやsummaryデータが利用可能な場合でも、デフォルトでcontentモードが選択されるため、ユーザーが手動で高性能なハイブリッド検索モードに切り替える必要があった。また、利用可能なデータに応じた最適なモード選択が自動化されていなかった。
+
+**Solution**: 接続確認時に`get_status`の結果を取得し、`data_stats`の`total_summaries`値を確認する方式を採用。`total_summaries > 0`の場合はreasoningとsummaryデータが利用可能と判断し、初期モードを自動的に`maximum`に設定。それ以外の場合は従来通り`DEFAULT_MODE`（content）を使用。これにより、利用可能なデータに応じて最適な検索モードが自動選択され、ユーザーは即座に最高性能での検索を開始できるようになった。
