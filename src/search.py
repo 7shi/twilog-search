@@ -8,7 +8,7 @@ import asyncio
 from rich.console import Console
 from rich.panel import Panel
 from rich.rule import Rule
-from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k_menu
+from settings_ui import show_user_filter_menu, show_date_filter_menu, show_top_k_menu, show_mode_menu
 from settings import SearchSettings
 from twilog_client import TwilogClient
 from safe_input import safe_text_input
@@ -35,6 +35,7 @@ def show_help():
     print("  /user  - ユーザーフィルタリング設定")
     print("  /date  - 日付フィルタリング設定")
     print("  /top   - 表示件数設定")
+    print("  /mode  - 検索モード設定")
     print("  /exit, /quit, /q  - プログラム終了")
     print("\n検索:")
     print("  検索クエリを入力すると意味的検索を実行")
@@ -75,11 +76,14 @@ def main():
         restrictions = []
         user_status = search_settings.user_filter.format_status()
         date_status = search_settings.date_filter.format_status()
+        mode_status = search_settings.mode_settings.format_status()
         
         if user_status != "すべてのユーザー":
             restrictions.append(f"ユーザー: {user_status}")
         if date_status != "すべての日付":
             restrictions.append(f"日付: {date_status}")
+        if mode_status != "average":
+            restrictions.append(f"モード: {mode_status}")
         
         if restrictions:
             print(f"[制限] {' | '.join(restrictions)}")
@@ -109,6 +113,9 @@ def main():
             elif command == "top":
                 show_top_k_menu(search_settings.top_k)
                 continue
+            elif command == "mode":
+                show_mode_menu(search_settings.mode_settings)
+                continue
             elif command in ["exit", "quit", "q"]:
                 print("プログラムを終了します")
                 return
@@ -119,7 +126,9 @@ def main():
         
         # 検索実行
         try:
-            results = asyncio.run(client.search_similar(query, search_settings))
+            mode = search_settings.mode_settings.get_mode()
+            weights = search_settings.mode_settings.get_weights()
+            results = asyncio.run(client.search_similar(query, search_settings, mode, weights))
         except Exception as e:
             print(f"検索エラー: {e}")
             continue

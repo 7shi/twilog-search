@@ -277,6 +277,57 @@ class TopKSettings:
         return self.top_k
 
 
+class SearchModeSettings:
+    """検索モード設定クラス"""
+    
+    def __init__(self, mode: str = "average", weights: Optional[List[float]] = None):
+        """
+        初期化
+        
+        Args:
+            mode: 検索モード
+            weights: averageモード用の重み（デフォルト: [1.0, 1.0, 1.0]）
+        """
+        self.mode = mode
+        self.weights = weights or [1.0, 1.0, 1.0]
+    
+    def set_mode(self, mode: str):
+        """検索モードを設定"""
+        self.mode = mode
+        # averageモード以外では重みをクリア
+        if mode != "average":
+            self.weights = [1.0, 1.0, 1.0]
+    
+    def set_weights(self, weights: List[float]):
+        """重みを設定（averageモード時のみ有効）"""
+        if self.mode == "average":
+            # 重みを正規化
+            weight_sum = sum(weights)
+            if weight_sum > 0:
+                self.weights = [w / weight_sum for w in weights]
+            else:
+                self.weights = [1.0, 1.0, 1.0]
+        else:
+            self.weights = [1.0, 1.0, 1.0]
+    
+    def get_mode(self) -> str:
+        """検索モードを取得"""
+        return self.mode
+    
+    def get_weights(self) -> Optional[List[float]]:
+        """重みを取得（averageモード時のみ）"""
+        if self.mode == "average" and self.weights != [1.0, 1.0, 1.0]:
+            return self.weights
+        return None
+    
+    def format_status(self) -> str:
+        """モード設定状態を文字列でフォーマット"""
+        if self.mode == "average" and self.weights != [1.0, 1.0, 1.0]:
+            weights_str = ", ".join(f"{w:.2f}" for w in self.weights)
+            return f"{self.mode} (weights: {weights_str})"
+        return self.mode
+
+
 class SearchSettings:
     """検索設定を統合管理するクラス"""
     
@@ -290,6 +341,7 @@ class SearchSettings:
         self.user_filter = UserFilterSettings()
         self.date_filter = DateFilterSettings()
         self.top_k = TopKSettings(initial_top_k)
+        self.mode_settings = SearchModeSettings()
     
     def to_dict(self) -> Dict[str, Any]:
         """設定をDict形式にシリアライズ"""
@@ -314,6 +366,14 @@ class SearchSettings:
         # date_filterの設定を復元
         if "date_filter" in data:
             settings.date_filter.filter_settings = data["date_filter"]
+        
+        # mode_settingsの設定を復元
+        if "mode_settings" in data:
+            mode_data = data["mode_settings"]
+            settings.mode_settings = SearchModeSettings(
+                mode=mode_data.get("mode", "average"),
+                weights=mode_data.get("weights", [1.0, 1.0, 1.0])
+            )
         
         return settings
     

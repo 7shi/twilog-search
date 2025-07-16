@@ -87,3 +87,8 @@
 **Problem**: `/user`コマンドでincludes/excludesを設定する際、存在しないユーザー名を入力した場合、そのまま設定されてしまい、検索結果が空になる問題があった。
 
 **Solution**: `suggest_users`機能を統合し、存在しないユーザー名入力時に類似ユーザー候補を表示する機能を実装。詳細な実装内容は [settings_ui.md](./settings_ui.md#ユーザー候補選択機能の統合) を参照。
+
+### 検索モード選択機能の統合
+**Problem**: ハイブリッド検索システムの最適化により、6種類の検索モード（content、reasoning、summary、average、maximum、minimum）と重み設定機能が利用可能になったが、search.pyでこれらの機能を選択・利用する手段が不足していた。
+
+**Solution**: `/mode`コマンドを追加し、`show_mode_menu`による検索モード選択機能を実装。SearchSettingsクラスにSearchModeSettingsを統合し、モード設定と重み設定を統一管理。検索実行時は`search_settings.mode_settings.get_mode()`と`search_settings.mode_settings.get_weights()`を取得し、TwilogClientの`search_similar`メソッドにmode/weights引数として渡す設計を採用。制限表示エリアにモード情報を追加し、デフォルトの「average」以外の場合は`[制限] モード: maximum`のように表示。数字キーショートカットと選択即完了の操作フローにより、効率的なモード変更を実現。詳細なUI設計は [docs/20250716-menu.md](../docs/20250716-menu.md) を参照。

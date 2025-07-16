@@ -46,3 +46,8 @@
 **Problem**: `format_status()`メソッドでincludes/excludes設定を「includes (3人)」のような件数のみで表示していたため、実際にどのユーザーが設定されているかが分からず、設定内容の確認と調整が困難だった。
 
 **Solution**: 3人以下の場合は全ユーザー名を表示（`includes: user1, user2, user3`）、4人以上の場合は最初の3人と総数を表示（`includes: user1, user2, user3...(5人)`）する詳細表示機能を実装。これにより、search.pyでの検索実行時に現在の設定内容を具体的に確認でき、フィルタリング設定の透明性と調整の利便性が向上。設定ミスの早期発見と適切な修正が可能になった。
+
+### 検索モード設定の統合
+**Problem**: ハイブリッド検索モードの組み込みに伴い、検索モード（content、reasoning、summary、average、maximum、minimum）と重み設定（averageモード時のweights）を管理する必要が生じた。これらの設定が既存のSearchSettingsクラスに統合されていないと、設定の受け渡しや管理が煩雑になる。
+
+**Solution**: SearchModeSettingsクラスを新設し、検索モードと重み設定を統合管理する設計を採用。デフォルトモードを「average」とし、重み設定は[1.0, 1.0, 1.0]の均等重みを初期値とした。set_mode()メソッドでaverageモード以外では重みを自動的にクリアし、set_weights()メソッドでaverageモード時のみ重みを正規化して設定する機能を実装。get_weights()メソッドでは均等重み以外の場合のみ重みを返し、format_status()メソッドで重み設定を含む状態表示を提供。SearchSettingsクラスのmode_settingsとして統合し、シリアライズ・デシリアライズ機能も追加することで、既存の設定管理アーキテクチャと一貫した動作を実現した。

@@ -43,7 +43,7 @@ class TwilogClient(EmbedClient):
         Args:
             query_text: 検索クエリ
             top_k: 取得件数制限（Noneの場合は全件）
-            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
+            mode: 検索モード ("content", "reasoning", "summary", "average", "maximum", "minimum")
             weights: 重み付けモード用の重み（合計1.0）
             
         Returns:
@@ -79,7 +79,7 @@ class TwilogClient(EmbedClient):
         Args:
             query_text: 検索クエリ
             search_settings: 検索設定（top_k含む）
-            mode: 検索モード ("content", "reasoning", "summary", "average", "product", "weighted")
+            mode: 検索モード ("content", "reasoning", "summary", "average", "maximum", "minimum")
             weights: 重み付けモード用の重み（合計1.0）
             
         Returns:
@@ -191,7 +191,7 @@ class TwilogCommand(EmbedCommand):
             search_parser.add_argument('query', help='検索クエリ')
             search_parser.add_argument('-k', '--top-k', type=int, help='取得件数制限')
             search_parser.add_argument('-m', '--mode', default='content', 
-                                     choices=['content', 'reasoning', 'summary', 'average', 'product', 'weighted'],
+                                     choices=['content', 'reasoning', 'summary', 'average', 'maximum', 'minimum'],
                                      help='検索モード (デフォルト: content)')
             search_parser.add_argument('-w', '--weights', nargs='+', type=float, 
                                      help='重み付けモード用の重み（例: 0.7 0.2 0.1）')
@@ -201,7 +201,7 @@ class TwilogCommand(EmbedCommand):
             similar_parser.add_argument('query', help='検索クエリ')
             similar_parser.add_argument('-k', '--top-k', type=int, help='取得件数制限')
             similar_parser.add_argument('-m', '--mode', default='content', 
-                                       choices=['content', 'reasoning', 'summary', 'average', 'product', 'weighted'],
+                                       choices=['content', 'reasoning', 'summary', 'average', 'maximum', 'minimum'],
                                        help='検索モード (デフォルト: content)')
             similar_parser.add_argument('-w', '--weights', nargs='+', type=float, 
                                        help='重み付けモード用の重み（例: 0.7 0.2 0.1）')

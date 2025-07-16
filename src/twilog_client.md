@@ -81,3 +81,8 @@
 **Problem**: SearchEngineでハイブリッド検索システム（6種類の検索モード）が実装され、TwilogServerでRPC統合が完了したが、クライアント側でこれらの高度な検索機能を利用するためのインターフェースが不足していた。投稿内容・タグ付け理由・要約の3つのベクトル空間を活用した検索がクライアントから実行できない状況だった。
 
 **Solution**: 全検索メソッドにハイブリッド検索パラメータを追加。`vector_search`と`search_similar`メソッドに`mode`パラメータ（content、reasoning、summary、average、product、weighted）と`weights`パラメータ（重み付けモード用）を追加。`search_posts_by_text`メソッドに`source`パラメータ（content、reasoning、summary）を追加し、3つのソースからのテキスト検索を実現。CLIコマンドでは`-m/--mode`、`-w/--weights`、`-s/--source`オプションを追加し、コマンドライン経由でハイブリッド検索の全機能を利用可能にした。`search_similar`コマンドの出力はJSON形式（`json.dumps(indent=2, ensure_ascii=False)`）に変更し、タグ情報を含む詳細な検索結果構造を視覚的に確認できるよう改善。これにより、6種類の検索モードがクライアント・CLI両方から統一的に利用可能となり、ハイブリッド検索システムの完全なクライアント統合を実現。
+
+### ハイブリッド検索モード最適化の反映
+**Problem**: 実測テストによりproductモードとharmonicモードが実用的価値を提供せず、weightedモードがaverageモードに統合可能であることが判明した。また、maximumモードとminimumモードが寛容・厳格な検索戦略として有効であることが確認された。これらの最適化結果をクライアント側に反映する必要があった。
+
+**Solution**: CLIコマンドの`choices`パラメータを最適化後の6種類（content、reasoning、summary、average、maximum、minimum）に更新。productモード・harmonicモード・weightedモードを削除し、新たにmaximumモード・minimumモードを追加。ドキュメント文字列の説明も最適化後の構成に合わせて更新し、各モードの実用的価値を明確にした。これにより、クライアント側でも最適化された効率的な検索モード選択が可能となり、実用性の高い検索体験を提供。

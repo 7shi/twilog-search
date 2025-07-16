@@ -7,7 +7,7 @@ import asyncio
 from rich.console import Console
 from simple_term_menu import TerminalMenu
 from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_no_menu
-from settings import UserFilterSettings, DateFilterSettings, TopKSettings
+from settings import UserFilterSettings, DateFilterSettings, TopKSettings, SearchModeSettings
 
 
 def _show_user_suggestions_menu(missing_user: str, suggestions: list, suggest_users_func) -> str:
@@ -481,3 +481,149 @@ def show_top_k_menu(settings: TopKSettings):
     if new_top_k:
         settings.set_top_k(new_top_k)
         console.print(f"[green]表示件数を{new_top_k}件に設定しました[/green]")
+
+
+def show_mode_menu(settings: SearchModeSettings):
+    """検索モード設定メニューを表示"""
+    console = Console()
+    
+    # モード選択肢（最適化後の6種類）
+    mode_options = [
+        ("content", "投稿内容のベクトル検索"),
+        ("reasoning", "タグ付け理由のベクトル検索"),
+        ("summary", "要約のベクトル検索"),
+        ("average", "3空間の平均（重み付き対応）"),
+        ("maximum", "3空間の最高類似度（寛容な検索）"),
+        ("minimum", "3空間の最低類似度（厳格な検索）")
+    ]
+    
+    while True:
+        console.print(f"\n[bold]=== 検索モード設定 ===[/bold]")
+        console.print(f"現在の設定: {settings.format_status()}")
+        
+        # メニューオプション作成
+        menu_items = []
+        for i, (mode, description) in enumerate(mode_options, 1):
+            if mode == settings.get_mode():
+                menu_items.append(f"[{i}] ● {mode}: {description}")
+            else:
+                menu_items.append(f"[{i}] {mode}: {description}")
+        
+        # averageモードの場合のweights設定オプション
+        if settings.get_mode() == "average":
+            menu_items.append(f"[{len(mode_options)+1}] weights: 重み設定の変更")
+        
+        menu_items.append(f"[0] 戻る")
+        
+        terminal_menu = TerminalMenu(menu_items, title="モードを選択してください:", show_search_hint=True)
+        choice = terminal_menu.show()
+        
+        if choice is None:  # ESCキー
+            break
+        elif choice == len(menu_items) - 1:  # [0] 戻る
+            break
+        elif choice < len(mode_options):  # モード選択
+            mode, _ = mode_options[choice]
+            settings.set_mode(mode)
+            console.print(f"[green]検索モードを '{mode}' に設定しました[/green]")
+            
+            # averageモードの場合は重み設定も表示
+            if mode == "average":
+                if _show_weights_submenu(settings):
+                    break  # 重み設定完了した場合はメニューから抜ける
+                # Falseの場合はトップメニューに戻る（continueで次のループへ）
+            else:
+                break  # 他のモード選択後はメニューから抜ける
+        elif settings.get_mode() == "average" and choice == len(mode_options):  # weights設定
+            if _show_weights_submenu(settings):
+                break  # 重み設定完了した場合はメニューから抜ける
+            # Falseの場合はトップメニューに戻る（continueで次のループへ）
+
+
+def _show_weights_submenu(settings: SearchModeSettings):
+    """重み設定サブメニューを表示"""
+    console = Console()
+    
+    while True:
+        console.print(f"\n[bold]=== 重み設定 (averageモード) ===[/bold]")
+        current_weights = settings.weights
+        console.print(f"現在の重み: content={current_weights[0]:.2f}, reasoning={current_weights[1]:.2f}, summary={current_weights[2]:.2f}")
+        
+        # プリセット選択肢
+        preset_options = [
+            ([1.0, 1.0, 1.0], "均等重み (デフォルト)"),
+            ([0.7, 0.2, 0.1], "content重視"),
+            ([0.2, 0.7, 0.1], "reasoning重視"),
+            ([0.1, 0.2, 0.7], "summary重視"),
+            ([0.5, 0.5, 0.0], "content + reasoning"),
+            ([0.5, 0.0, 0.5], "content + summary"),
+            ([0.0, 0.5, 0.5], "reasoning + summary")
+        ]
+        
+        menu_items = []
+        for i, (weights, description) in enumerate(preset_options, 1):
+            if weights == current_weights:
+                menu_items.append(f"[{i}] ● {description}")
+            else:
+                menu_items.append(f"[{i}] {description}")
+        
+        menu_items.extend([
+            f"[{len(preset_options)+1}] カスタム重み入力",
+            f"[0] 戻る"
+        ])
+        
+        terminal_menu = TerminalMenu(menu_items, title="重み設定を選択してください:", show_search_hint=True)
+        choice = terminal_menu.show()
+        
+        if choice is None or choice == len(menu_items) - 1:  # ESCまたは戻る
+            return False  # トップメニューに戻る
+        elif choice < len(preset_options):  # プリセット選択
+            weights, description = preset_options[choice]
+            settings.set_weights(weights)
+            console.print(f"[green]重みを設定しました: {description}[/green]")
+            return True  # 設定完了してメニューから抜ける
+        elif choice == len(preset_options):  # カスタム入力
+            if _handle_custom_weights(settings):
+                return True  # 設定完了してメニューから抜ける
+
+
+def _handle_custom_weights(settings: SearchModeSettings):
+    """カスタム重み入力の処理"""
+    console = Console()
+    console.print("\n[bold]カスタム重み入力[/bold]")
+    console.print("3つの値をスペース区切りで入力してください (例: 0.7 0.2 0.1)")
+    console.print("合計値は自動で正規化されます")
+    
+    weights_input = safe_text_input("重み (content reasoning summary): ", "weights_input")
+    
+    if weights_input is None:  # Ctrl+D
+        return False
+    elif weights_input == "":  # 空入力はキャンセル
+        return False
+    
+    try:
+        # スペース区切りで分割して数値に変換
+        weights_str = weights_input.strip().split()
+        if len(weights_str) != 3:
+            console.print("[red]エラー: 3つの値を入力してください[/red]")
+            return False
+        
+        weights = [float(w) for w in weights_str]
+        
+        # 負の値チェック
+        if any(w < 0 for w in weights):
+            console.print("[red]エラー: 重みは0以上の値にしてください[/red]")
+            return False
+        
+        # 全て0チェック
+        if sum(weights) == 0:
+            console.print("[red]エラー: すべての重みが0です[/red]")
+            return False
+        
+        settings.set_weights(weights)
+        console.print(f"[green]カスタム重みを設定しました[/green]")
+        return True  # 設定完了
+        
+    except ValueError:
+        console.print("[red]エラー: 数値を入力してください[/red]")
+        return False
