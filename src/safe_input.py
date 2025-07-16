@@ -57,6 +57,22 @@ readline.set_completer(None)
 # グローバルな履歴管理インスタンス
 history_manager = HistoryManager()
 
+# ユーザー名補完用のグローバル変数
+_user_completion_list = []
+
+def _user_completer(text, state):
+    """ユーザー名補完関数"""
+    global _user_completion_list
+    
+    # 入力テキストに基づいて候補を絞り込み
+    matches = [user for user in _user_completion_list if user.startswith(text)]
+    
+    # state番目の候補を返す
+    if state < len(matches):
+        return matches[state]
+    else:
+        return None
+
 
 def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
     """安全なテキスト入力"""
@@ -82,6 +98,67 @@ def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
             
             return user_input
     finally:
+        # 指定された履歴コンテキストを保存
+        history_manager.save_history(history, [])
+        
+        # 以前の履歴を復元
+        readline.clear_history()
+        for item in saved_history:
+            readline.add_history(item)
+
+
+def safe_text_input_with_user_completion(prompt, history: str, user_list, validator=None, handle_eof=True):
+    """ユーザー名補完機能付きの安全なテキスト入力"""
+    global _user_completion_list
+    
+    # 補完候補を設定
+    _user_completion_list = user_list if user_list else []
+    
+    # 指定された履歴コンテキストに切り替え
+    saved_history = history_manager.set_history(history)
+    
+    # 元の補完設定を保存
+    saved_completer = readline.get_completer()
+    saved_delims = readline.get_completer_delims()
+    
+    try:
+        # ユーザー名補完を設定
+        readline.set_completer(_user_completer)
+        readline.set_completer_delims(' \t\n,')  # コンマ区切り対応
+        
+        # readline補完を有効化
+        readline.parse_and_bind("tab: complete")
+        
+        # 補完機能の案内
+        if len(_user_completion_list) > 0:
+            console = Console()
+            console.print(f"[dim]Tabキーでユーザー名補完を使用できます ({len(_user_completion_list)}件)[/dim]")
+        
+        while True:
+            try:
+                user_input = input(prompt)
+            except EOFError:
+                if handle_eof:
+                    print()
+                    return None  # Ctrl+Dの場合はNoneを返す
+                else:
+                    raise
+            
+            # バリデーション
+            if user_input and validator and not validator(user_input):
+                console = Console()
+                console.print("[red]入力形式が正しくありません。再入力してください。[/red]")
+                continue
+            
+            return user_input
+    finally:
+        # 補完設定を復元
+        readline.set_completer(saved_completer)
+        readline.set_completer_delims(saved_delims)
+        
+        # Tab補完を無効化（デフォルトの動作に戻す）
+        readline.parse_and_bind("tab: self-insert")
+        
         # 指定された履歴コンテキストを保存
         history_manager.save_history(history, [])
         

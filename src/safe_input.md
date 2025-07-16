@@ -50,3 +50,8 @@
 **Problem**: Linux環境の標準readlineで日本語入力時に問題が発生し、文字入力の品質が低下していた。
 
 **Solution**: `gnureadline`を優先的に使用することでLinux環境での日本語入力を改善。Windows環境では`gnureadline`が対応していないため、標準`readline`にフォールバックする選択的実装を採用し、環境依存問題を解決した。
+
+### ユーザー名Tab補完機能の実装
+**Problem**: ユーザー名入力時に正確な名前を覚えていない場合や、タイポが発生しやすい場合に、入力効率が低下している。
+
+**Solution**: `safe_text_input_with_user_completion`関数を実装し、ユーザー名のTab補完機能を提供。readlineの`set_completer`と`_user_completer`関数を使用して前方一致によるユーザー名候補を表示し、コンマ区切りの複数入力にも対応。`parse_and_bind("tab: complete")`で補完機能を有効化し、入力完了後は`parse_and_bind("tab: self-insert")`で無効化することで、他の入力場面への影響を防止。補完設定の保存・復元により既存システムとの完全な統合を実現した。

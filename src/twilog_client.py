@@ -149,6 +149,19 @@ class TwilogClient(EmbedClient):
         return await self._send_request("search_posts_by_text", params)
     
     @rpc_method
+    async def get_user_list(self) -> list:
+        """
+        全ユーザーのリストを取得
+        
+        Returns:
+            ユーザー名のリスト
+            
+        Raises:
+            RuntimeError: サーバーエラーまたは通信エラー
+        """
+        return await self._send_request("get_user_list", {})
+    
+    @rpc_method
     async def suggest_users(self, user_list: list) -> dict:
         """
         存在しないユーザーに対して類似ユーザーを提案

@@ -143,6 +143,12 @@ class TwilogServer(EmbedServer):
         return self.search_engine.search_posts_by_text(search_term, limit, source)
     
     @rpc_method
+    async def get_user_list(self):
+        """全ユーザーのリストを取得"""
+        # SearchEngineに委譲
+        return self.search_engine.user_list
+    
+    @rpc_method
     async def suggest_users(self, user_list: list):
         """存在しないユーザーに対して類似ユーザーを提案"""
         if not user_list or not isinstance(user_list, list):

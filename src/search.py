@@ -113,7 +113,13 @@ def main():
                 show_help()
                 continue
             elif command == "user":
-                show_user_filter_menu(search_settings.user_filter, client.suggest_users)
+                # ユーザー一覧を取得して補完機能に渡す
+                try:
+                    user_list = asyncio.run(client.get_user_list())
+                except Exception as e:
+                    print(f"ユーザー一覧取得エラー: {e}")
+                    user_list = None
+                show_user_filter_menu(search_settings.user_filter, client.suggest_users, user_list)
                 continue
             elif command == "date":
                 show_date_filter_menu(search_settings.date_filter)
