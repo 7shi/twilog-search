@@ -30,6 +30,57 @@ async def test_websocket_connection(client):
     
     return result
 
+def show_results(results, start_index, top_k, total_count, query):
+    """検索結果を表示"""
+    if not results:
+        print("結果が見つかりませんでした")
+        return
+    
+    # 表示範囲の計算
+    end_index = min(start_index + top_k, len(results))
+    display_results = results[start_index:end_index]
+    
+    # 結果表示
+    console = Console()
+    rank_width = len(str(total_count))  # 総件数に基づいて桁数を決定
+    
+    for i, result in enumerate(display_results):
+        rank = start_index + i + 1  # 1ベースのランク
+        similarity = result.get('score', 0.0)
+        post_info = result.get('post', {})
+        user = post_info.get('user', 'unknown')
+        
+        # ヘッダー情報（色付き）
+        header  = f"[bold cyan]{rank:{rank_width}d}[/bold cyan]:"           # ランク
+        header += f" [bold green]{similarity:.5f}[/bold green]"             # 類似度
+        header += f" [yellow][{post_info.get('timestamp', '')}][/yellow]"   # 日時
+        header += f" [bold blue]{user}[/bold blue]"                         # ユーザー
+        
+        # タグがある場合は追加
+        tags = post_info.get('tags', [])
+        if tags:
+            header += f" [bright_magenta][{' '.join(tags)}][/bright_magenta]"
+        
+        # パネル表示
+        panel = Panel(
+            post_info['content'].strip(),
+            title=header,
+            title_align="left",
+            subtitle=f"[blue]{post_info['url']}[/blue]",
+            subtitle_align="right",
+            border_style="bright_blue",
+            padding=(0, 1)
+        )
+        
+        console.print()  # パネル間のスペース
+        console.print(panel)
+    
+    # 検索結果終了のセパレーター
+    console.print()
+    range_text = f"{start_index + 1}-{end_index}/{total_count}件"
+    console.print(Rule(f"検索結果: {range_text} (クエリ: '{query}')", style="dim"))
+
+
 def show_help():
     """ヘルプメッセージを表示"""
     print("\n=== ヘルプ ===")
@@ -39,6 +90,7 @@ def show_help():
     print("  /date  - 日付フィルタリング設定")
     print("  /top   - 表示件数設定")
     print("  /mode  - 検索モード設定")
+    print("  /next  - 次の検索結果を表示")
     print("  /exit, /quit, /q  - プログラム終了")
     print("\n検索:")
     print("  検索クエリを入力すると意味的検索を実行")
@@ -82,6 +134,11 @@ def main():
         user_list = []
     
     user_info = UserInfo(user_list)
+    
+    # 検索結果の状態管理
+    last_search_results = []
+    current_display_index = 0
+    last_query = ""
     
     print("リモート検索システム準備完了")
     print()
@@ -136,6 +193,24 @@ def main():
             elif command == "mode":
                 show_mode_menu(search_settings.mode_settings)
                 continue
+            elif command == "next":
+                # 前回の検索結果がない場合
+                if not last_search_results:
+                    print("検索結果がありません。先に検索を実行してください。")
+                    continue
+                
+                # 次の表示範囲が存在するかチェック
+                if current_display_index >= len(last_search_results):
+                    print("これ以上表示できる結果がありません。")
+                    continue
+                
+                # 次の結果を表示
+                top_k = search_settings.top_k.get_top_k()
+                show_results(last_search_results, current_display_index, top_k, len(last_search_results), last_query)
+                
+                # 表示位置を更新
+                current_display_index += top_k
+                continue
             elif command in ["exit", "quit", "q"]:
                 print("プログラムを終了します")
                 return
@@ -144,11 +219,19 @@ def main():
                 show_help()
                 continue
         
-        # 検索実行
+        # 検索実行（常に100件取得）
         try:
             mode = search_settings.mode_settings.get_mode()
             weights = search_settings.mode_settings.get_weights()
-            results = asyncio.run(client.search_similar(query, search_settings, mode, weights))
+            
+            # 検索設定をコピーして常に100件取得するように変更
+            search_settings_copy = SearchSettings()
+            search_settings_copy.user_filter = search_settings.user_filter
+            search_settings_copy.date_filter = search_settings.date_filter
+            search_settings_copy.mode_settings = search_settings.mode_settings
+            search_settings_copy.top_k.set_top_k(100)  # 常に100件取得
+            
+            results = asyncio.run(client.search_similar(query, search_settings_copy, mode, weights))
         except Exception as e:
             print(f"検索エラー: {e}")
             continue
@@ -157,44 +240,17 @@ def main():
             print("結果が見つかりませんでした")
             continue
         
+        # 検索結果の状態を更新
+        last_search_results = results
+        current_display_index = 0
+        last_query = query
+        
         # 結果表示
-        console = Console()
-        rank_width = len(str(10))  # デフォルト10件表示
+        top_k = search_settings.top_k.get_top_k()
+        show_results(last_search_results, current_display_index, top_k, len(last_search_results), last_query)
         
-        for result in results:
-            rank = result.get('rank', 0)
-            similarity = result.get('score', 0.0)
-            post_info = result.get('post', {})
-            user = post_info.get('user', 'unknown')
-            
-            # ヘッダー情報（色付き）
-            header  = f"[bold cyan]{rank:{rank_width}d}[/bold cyan]:"           # ランク
-            header += f" [bold green]{similarity:.5f}[/bold green]"             # 類似度
-            header += f" [yellow][{post_info.get('timestamp', '')}][/yellow]"   # 日時
-            header += f" [bold blue]{user}[/bold blue]"                         # ユーザー
-            
-            # タグがある場合は追加
-            tags = post_info.get('tags', [])
-            if tags:
-                header += f" [bright_magenta][{' '.join(tags)}][/bright_magenta]"
-            
-            # パネル表示
-            panel = Panel(
-                post_info['content'].strip(),
-                title=header,
-                title_align="left",
-                subtitle=f"[blue]{post_info['url']}[/blue]",
-                subtitle_align="right",
-                border_style="bright_blue",
-                padding=(0, 1)
-            )
-            
-            console.print()  # パネル間のスペース
-            console.print(panel)
-        
-        # 検索結果終了のセパレーター
-        console.print()
-        console.print(Rule(f"検索結果: {len(results)}件 (クエリ: '{query}')", style="dim"))
+        # 表示位置を更新
+        current_display_index += top_k
 
 if __name__ == "__main__":
     main()

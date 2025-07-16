@@ -112,3 +112,8 @@
 **Problem**: ユーザー名補完機能とsuggest_users機能が個別に実装されており、ユーザー情報の管理が分散していた。また、user_listが取得できれば外部で処理できるsuggest_users機能がサーバー・クライアント間通信を必要とし、非効率だった。
 
 **Solution**: UserInfoクラスを導入し、ユーザー情報の一元管理を実現。起動時に`client.get_user_list()`で取得したユーザー一覧を`UserInfo(user_list)`でインスタンス化し、`show_user_filter_menu(search_settings.user_filter, user_info)`の形でUserInfoインスタンスを直接渡す設計に変更。UserInfoクラス内でuser_completer（Tab補完）とsuggest_users（類似ユーザー提案）の両機能を提供し、settings_ui.pyが内部でこれらを使い分ける。これにより、ユーザー情報の一元管理と処理効率の向上を両立し、サーバー・クライアント間通信を削減した。
+
+### 検索結果ページネーション機能の実装
+**Problem**: 検索結果が大量にある場合、設定したtop_k件を超える結果を確認できず、情報の取りこぼしが発生していた。また、検索のたびに同じ結果を再取得するため、サーバー負荷とレスポンス時間が課題となっていた。
+
+**Solution**: 検索実行時に常に100件取得し、内部でlast_search_results、current_display_index、last_queryを管理するページネーション機能を実装。初回検索時は最初のtop_k件のみ表示し、/nextコマンドで次のtop_k件を順次表示する仕組みを採用。show_results関数でstart_index、top_k、total_countを管理し、表示範囲（例：1-10/100件）を明示。これにより、1回の検索で大量の結果を効率的に閲覧でき、サーバー負荷を削減しながらユーザーの情報取得効率を向上させた。
