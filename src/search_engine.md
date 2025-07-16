@@ -102,6 +102,16 @@
 
 **Solution**: `common_post_ids`をインスタンス変数として初期化時に事前計算し、効率的なハイブリッド検索を実現。`_calculate_common_post_ids()`メソッドで3つのベクトルストア（content、reasoning、summary）が全て存在する場合のみ共通post_idsを計算し、利用可能性を事前判定。これにより、ハイブリッドモードでの検索処理が高速化され、統合検索の実用性が向上した。
 
+### 統合モードの類似度計算最適化とVectorStoreソート統合
+**Problem**: 統合モード（average、maximum、minimum）でコサイン類似度を1つずつpost_idに対してループ内で計算していたため、大量のpost_idを持つデータセットでは処理が遅くなっていた。また、各ベクトルストアでpost_idの順序が異なるため、マスクで取得したベクトルの順序調整が必要だった。
+
+**Solution**: VectorStoreレベルでのpost_idソート機能とSearchEngineでの事前計算ベクトル集合を統合した最適化を実現。VectorStoreの`load_vectors()`でpost_idとベクトルを結合してソートし、post_id順でベクトルを管理。SearchEngineの`_calculate_common_post_ids()`で事前計算されたベクトル集合（common_content_vectors、common_reasoning_vectors、common_summary_vectors）を初期化時に作成し、統合モードではマスクでソート済みベクトルを直接使用。これにより、ループ処理・マスク適用・順序調整を完全に排除し、F.cosine_similarityによる並列計算で最高の処理効率を実現した。
+
+### タグデータ読み込みのエラーハンドリング改善
+**Problem**: `_load_tags_data()`メソッドでタグデータの読み込みに失敗した場合、警告メッセージがコンソールに出力され、デバッグ時やテスト時に不要な出力が発生していた。
+
+**Solution**: 例外処理を`pass`文による無言の処理に変更し、タグデータの読み込み失敗を静黙に処理する設計を採用。タグデータは補助的な情報であり、システムの主要機能（検索）に影響を与えないため、失敗時は無言で継続する方針とした。
+
 ### クエリベクトル形状の正規化によるハイブリッドモード互換性
 **Problem**: ハイブリッド検索モードで「a Tensor with 768 elements cannot be converted to Scalar」エラーが発生していた。原因は`self._embed_text()`が返すクエリベクトルの形状が`torch.Size([1, 768])`（2次元）だったため、`F.cosine_similarity(...).item()`でスカラー変換に失敗していた。
 

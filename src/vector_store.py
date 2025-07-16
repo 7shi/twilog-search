@@ -47,8 +47,7 @@ class VectorStore:
         import torch
         import safetensors.torch
         
-        all_post_ids = []
-        all_vectors = []
+        all_items = []  # (post_id, vector) のタプルリスト
         
         # チャンク数を取得
         chunks = self.metadata.get("chunks", 0)
@@ -58,16 +57,21 @@ class VectorStore:
             chunk_file = self.vector_dir / f"{chunk_id:04d}.safetensors"
             if chunk_file.exists():
                 data = safetensors.torch.load_file(chunk_file)
-                post_ids = data["post_ids"].tolist()
+                post_ids = data["post_ids"]
                 vectors = data["vectors"]
                 
-                all_post_ids.extend(post_ids)
-                all_vectors.append(vectors)
+                # post_idとベクトルをタプルにしてリストに追加
+                for i, post_id in enumerate(post_ids):
+                    all_items.append((post_id.item(), vectors[i]))
         
         # 全ベクトルを結合
-        if all_vectors:
-            self.vectors = torch.cat(all_vectors, dim=0)
-            self.post_ids = all_post_ids
+        if all_items:
+            # post_idでソート（Pythonの通常ソート）
+            all_items.sort(key=lambda x: x[0])
+            
+            # post_idとベクトルを分離
+            self.post_ids = [item[0] for item in all_items]
+            self.vectors = torch.stack([item[1] for item in all_items])
             
             # post_id → indexのマッピングを構築
             self.post_id_to_index = {post_id: idx for idx, post_id in enumerate(self.post_ids)}

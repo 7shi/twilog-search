@@ -21,3 +21,8 @@
 **Problem**: 大量のpost_idリストから線形検索を行うと、特定のpost_idのベクトルを取得する際に時間がかかっていた。
 
 **Solution**: post_id→indexのマッピング辞書を構築し、O(1)での高速アクセスを実現。
+
+### post_idソートによるハイブリッド検索最適化
+**Problem**: SearchEngineでハイブリッド検索を行う際、各VectorStoreのpost_idの順序が異なるため、共通post_idに対するベクトルの対応関係が複雑になっていた。また、torch.catとtorch.argsortによるソート処理で、post_idのfloat変換により精度が失われる問題が発生していた。
+
+**Solution**: load_vectors()で各チャンクのpost_idとベクトルをタプルリストに格納し、Pythonの通常ソートアルゴリズムを使用してpost_id順にソート。post_idの整数精度を保持しつつ、ベクトルとの対応関係を正確に管理。これにより、SearchEngineでのマスク処理が簡素化され、ハイブリッド検索の効率が大幅に向上した。

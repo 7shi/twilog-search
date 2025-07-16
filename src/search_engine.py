@@ -47,12 +47,17 @@ class SearchEngine:
         self.user_list: List[str] = []
         self.tags_data: Dict[int, dict] = {}
         self.tag_index: Dict[str, List[int]] = {}
-        self.common_post_ids: Optional[List[int]] = None
         
         # ベクトルストア
         self.content_store = VectorStore(str(self.embeddings_dir))
         self.reasoning_store: Optional[VectorStore] = None
         self.summary_store: Optional[VectorStore] = None
+        
+        # 事前計算されたベクトル集合（統合モード用）
+        self.common_post_ids: Optional[List[int]] = None
+        self.common_content_vectors: Optional['torch.Tensor'] = None
+        self.common_reasoning_vectors: Optional['torch.Tensor'] = None
+        self.common_summary_vectors: Optional['torch.Tensor'] = None
     
     def _load_metadata(self, metadata_path: Path) -> dict:
         """メタデータファイルを読み込む"""
@@ -137,8 +142,22 @@ class SearchEngine:
             # 3つのベクトルストアで共通のpost_idsを取得
             common_ids = content_ids & reasoning_ids & summary_ids
             self.common_post_ids = sorted(list(common_ids))
-        else:
-            self.common_post_ids = None
+            
+            # 効率的なフィルタリング用のマスクを事前計算
+            import torch
+            common_ids_tensor = torch.tensor(self.common_post_ids)
+            content_ids_tensor = torch.tensor(self.content_store.post_ids)
+            reasoning_ids_tensor = torch.tensor(self.reasoning_store.post_ids)
+            summary_ids_tensor = torch.tensor(self.summary_store.post_ids)
+            content_mask = torch.isin(content_ids_tensor, common_ids_tensor)
+            reasoning_mask = torch.isin(reasoning_ids_tensor, common_ids_tensor)
+            summary_mask = torch.isin(summary_ids_tensor, common_ids_tensor)
+            
+            # 事前計算されたベクトル集合を作成（統合モード用）
+            # VectorStoreが既にpost_idでソート済みなので、マスクで取得したベクトルも自動的にソート済み
+            self.common_content_vectors = self.content_store.vectors[content_mask]
+            self.common_reasoning_vectors = self.reasoning_store.vectors[reasoning_mask]
+            self.common_summary_vectors = self.summary_store.vectors[summary_mask]
     
     def is_text_match(self, content: str, include_terms: List[str], exclude_terms: List[str]) -> bool:
         """
@@ -237,38 +256,37 @@ class SearchEngine:
             import torch
             import torch.nn.functional as F
             
-            # 共通post_idに対応するベクトルを取得
-            similarities = []
-            for post_id in self.common_post_ids:
-                vec = self.content_store.get_vector(post_id)
-                c = F.cosine_similarity(vec, query_vector, dim=0).item()
-                
-                vec = self.reasoning_store.get_vector(post_id)
-                r = F.cosine_similarity(vec, query_vector, dim=0).item()
-                
-                vec = self.summary_store.get_vector(post_id)
-                s = F.cosine_similarity(vec, query_vector, dim=0).item()
-                
-                # 統合方法に応じて計算
-                if mode == "average":
-                    if weights is None:
-                        # デフォルトは均等重み
-                        final_sim = (c + r + s) / 3
-                    else:
-                        # 重み付き平均
-                        weight_sum = sum(weights)
-                        if weight_sum > 0:
-                            weights = [w / weight_sum for w in weights]
-                        final_sim = c * weights[0] + r * weights[1] + s * weights[2]
-                elif mode == "maximum":
-                    final_sim = max(c, r, s)
-                elif mode == "minimum":
-                    final_sim = min(c, r, s)
-                
-                similarities.append((post_id, final_sim))
+            # 事前計算されたベクトル集合を使用して一括コサイン類似度計算
+            c_sims = F.cosine_similarity(self.common_content_vectors, query_vector, dim=1)
+            r_sims = F.cosine_similarity(self.common_reasoning_vectors, query_vector, dim=1)
+            s_sims = F.cosine_similarity(self.common_summary_vectors, query_vector, dim=1)
+            
+            # 統合方法に応じて計算
+            if mode == "average":
+                if weights is None:
+                    # デフォルトは均等重み
+                    final_sims = (c_sims + r_sims + s_sims) / 3
+                else:
+                    # 重み付き平均
+                    weight_sum = sum(weights)
+                    if weight_sum > 0:
+                        weights = [w / weight_sum for w in weights]
+                    final_sims = c_sims * weights[0] + r_sims * weights[1] + s_sims * weights[2]
+            elif mode == "maximum":
+                final_sims = torch.maximum(torch.maximum(c_sims, r_sims), s_sims)
+            elif mode == "minimum":
+                final_sims = torch.minimum(torch.minimum(c_sims, r_sims), s_sims)
             
             # 類似度で降順ソート
-            similarities.sort(key=lambda x: x[1], reverse=True)
+            sorted_indices = torch.argsort(final_sims, descending=True)
+            
+            # 結果を作成
+            similarities = []
+            for idx in sorted_indices:
+                post_id = self.common_post_ids[idx.item()]
+                similarity = final_sims[idx].item()
+                similarities.append((post_id, similarity))
+            
             return similarities
         
         raise ValueError(f"Unknown mode: {mode}")
@@ -661,7 +679,8 @@ class SearchEngine:
                         "tags": data["tags"]
                     }
         except (json.JSONDecodeError, KeyError) as e:
-            print(f"Warning: タグデータの読み込みに失敗しました: {e}")
+            # タグデータの読み込みに失敗
+            pass
     
     def _build_tag_index(self) -> None:
         """タグから投稿IDへの逆引きインデックスを構築"""
