@@ -8,7 +8,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import WebSocket from 'ws';
-import yaml from 'js-yaml';
+// yamlライブラリを削除（整形テキスト形式に変更）
 // 古いSQLiteベースの実装は削除し、twilog_server.pyのラッパーとして動作
 
 // twilog_server.pyのsearch_similarメソッドと同じ形式の結果を期待
@@ -61,6 +61,8 @@ class TwilogMCPServer {
   }
 
   private setupTools(): void {
+    // 以下のツールスキーマは、TwilogCommand（src/twilog_client.py）の出力形式と同期している
+    // 整形テキスト形式での統一出力により、CLI・MCP両方で一貫した表示を提供
     this.server.setRequestHandler(ListToolsRequestSchema, async () => {
       return {
         tools: [
@@ -392,11 +394,33 @@ class TwilogMCPServer {
       };
       const response = await this.sendWebSocketRequest(url, request);
       
+      const statusIcon = response.ready ? '🟢' : '🔴';
+      const statusText = response.ready ? '稼働中' : '停止中';
+      
+      let result = `${statusIcon} Twilog Server Status\n\n`;
+      result += `状態: ${statusText}\n`;
+      result += `サーバータイプ: ${response.server_type || 'Unknown'}\n`;
+      if (response.model) {
+        result += `モデル: ${response.model}\n`;
+      }
+      
+      if (response.data_stats) {
+        result += `\n📊 データ統計:\n`;
+        result += `・投稿数: ${response.data_stats.total_posts?.toLocaleString() || 0}件\n`;
+        result += `・ユーザー数: ${response.data_stats.total_users?.toLocaleString() || 0}人\n`;
+        if (response.data_stats.total_summaries) {
+          result += `・要約数: ${response.data_stats.total_summaries.toLocaleString()}件\n`;
+        }
+        if (response.data_stats.total_tags) {
+          result += `・タグ数: ${response.data_stats.total_tags.toLocaleString()}件\n`;
+        }
+      }
+      
       return {
         content: [
           {
             type: 'text',
-            text: `Twilog Server Status:\n\n${yaml.dump(response, { indent: 2 })}`,
+            text: result,
           },
         ],
       };
@@ -474,13 +498,26 @@ class TwilogMCPServer {
         };
       }
       
+      // 整形テキスト形式に変換
+      let resultText = `🔍 検索結果: ${results.length}件 (クエリ: "${query}")\n\n`;
+      
+      results.forEach((result: any, index: number) => {
+        const post = result.post;
+        const score = result.score.toFixed(3);
+        const rank = index + 1;
+        
+        resultText += `${rank}. [${score}] @${post.user} (${post.timestamp}) ${post.url}\n`;
+        
+        // 投稿内容の処理（改行保持、空行詰め）
+        const content = post.content.replace(/\n\s*\n/g, '\n').trim();
+        resultText += `   ${content}\n\n`;
+      });
+      
       return {
         content: [
           {
             type: 'text',
-            text: `検索結果 (クエリ: "${query}", 件数: ${results.length}):
-
-${yaml.dump(results, { indent: 2 })}`,
+            text: resultText,
           },
         ],
       };
@@ -511,13 +548,19 @@ ${yaml.dump(results, { indent: 2 })}`,
       
       const userStats = await this.sendWebSocketRequest(this.websocketUrl, request);
       
+      let resultText = `👥 ユーザー別投稿統計 (上位${userStats.length}人)\n\n`;
+      
+      userStats.forEach((stat: any, index: number) => {
+        const rank = index + 1;
+        const postCount = stat.post_count.toLocaleString();
+        resultText += `${rank}. ${stat.user}: ${postCount}投稿\n`;
+      });
+      
       return {
         content: [
           {
             type: 'text',
-            text: `ユーザー別投稿統計 (上位${userStats.length}人):
-
-${yaml.dump(userStats, { indent: 2 })}`,
+            text: resultText,
           },
         ],
       };
@@ -538,13 +581,19 @@ ${yaml.dump(userStats, { indent: 2 })}`,
       
       const stats = await this.sendWebSocketRequest(this.websocketUrl, request);
       
+      let resultText = `📊 データベース統計\n\n`;
+      resultText += `総投稿数: ${stats.total_posts?.toLocaleString() || 0}件\n`;
+      resultText += `総ユーザー数: ${stats.total_users?.toLocaleString() || 0}人\n`;
+      
+      if (stats.date_range) {
+        resultText += `データ期間: ${stats.date_range.earliest} ～ ${stats.date_range.latest}\n`;
+      }
+      
       return {
         content: [
           {
             type: 'text',
-            text: `データベース統計:
-
-${yaml.dump(stats, { indent: 2 })}`,
+            text: resultText,
           },
         ],
       };
@@ -582,13 +631,22 @@ ${yaml.dump(stats, { indent: 2 })}`,
         };
       }
 
+      let resultText = `📝 テキスト検索結果: ${posts.length}件 (検索語: "${search_term}")\n\n`;
+      
+      posts.forEach((post: any, index: number) => {
+        const rank = index + 1;
+        resultText += `${rank}. @${post.user} (${post.timestamp})\n`;
+        
+        // 投稿内容の処理（改行保持、空行詰め）
+        const content = post.content.replace(/\n\s*\n/g, '\n').trim();
+        resultText += `   ${content}\n\n`;
+      });
+      
       return {
         content: [
           {
             type: 'text',
-            text: `テキスト検索結果 (検索語: "${search_term}", 件数: ${posts.length}):
-
-${yaml.dump(posts, { indent: 2 })}`,
+            text: resultText,
           },
         ],
       };

@@ -50,7 +50,6 @@ Twilog検索システム用のMCP（Model Context Protocol）サーバーです�
 ```bash
 cd twilog-mcp-server
 npm install
-# js-yaml, @types/js-yaml が自動インストールされます
 ```
 
 ### ビルド
@@ -291,34 +290,33 @@ MCPサーバーは以下の処理のみを担当：
 
 ## レスポンス形式
 
-### YAML形式での統一出力
+### 整形テキスト形式での統一出力
 
-全ての構造化レスポンス（search_similar、get_user_stats、get_database_stats、search_posts_by_text、get_status）はYAML形式で出力されます：
+全ての構造化レスポンス（search_similar、get_user_stats、get_database_stats、search_posts_by_text、get_status）は整形テキスト形式で出力されます：
 
 **利点:**
-- reasoning、summary、tagsなどの項目も自動的に表示
-- 階層構造が見やすい
-- データ構造変更時の自動対応
-- MCPクライアントでの可読性向上
+- 絵文字によるわかりやすい表示（🔍、📝、👥、📊、🟢等）
+- MCPクライアントでの高い可読性
+- LLMクライアントでの処理しやすさ
+- 投稿内容の改行保持・空行詰め処理
 
 **出力例:**
-```yaml
-- rank: 1
-  score: 0.8779904246330261
-  post:
-    post_id: 1859975281576194199
-    content: "読み、書き、そろばん」のそろばんってプログラミングのこと？
-    timestamp: '2024-11-23 00:00:38'
-    url: https://x.com/subarusatosi/status/1859975281576194199
-    user: subarusatosi
-    reasoning: このツイートは、「読み、書き、そろばん」という日本の伝統的な学習項目における...
-    summary: "そろばん」はプログラミングのこと？
-    tags:
-      - 教育
-      - テクノロジー
-      - 言語
-      - 思考
 ```
+🔍 検索結果: 2件 (クエリ: "プログラミング")
+
+1. [0.879] @... (2024-03-15 14:30:25) https://x.com/...
+   今日はPythonでWebアプリケーションを作ってみました。フレームワークの選択が重要ですね。
+
+2. [0.845] @... (2024-03-10 09:15:42) https://x.com/...
+   機械学習のプログラミングは難しいけど、面白い！
+   データの前処理に時間がかかるのが悩みどころです。
+```
+
+**特徴:**
+- reasoning、summary、tagsは削除（LLMクライアントには不要）
+- 数値はカンマ区切りで見やすく表示
+- URLは日時の後に配置
+- 投稿内容は改行保持・空行詰め処理済み
 
 ## エラーハンドリング
 

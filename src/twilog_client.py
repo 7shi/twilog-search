@@ -223,79 +223,126 @@ class TwilogCommand(EmbedCommand):
         
         return parser
     
+    # 以下のrpc_methodメソッドは、MCPサーバー（mcp/src/index.ts）の出力形式と同期している
+    # 整形テキスト形式での統一出力により、CLI・MCP両方で一貫した表示を提供
+    
+    @rpc_method
+    async def get_status(self, args) -> None:
+        """get_statusコマンドの処理"""
+        results = await self.client.get_status()
+        
+        status_icon = "🟢" if results.get('ready', False) else "🔴"
+        status_text = "稼働中" if results.get('ready', False) else "停止中"
+        
+        print(f"{status_icon} Twilog Server Status\n")
+        print(f"状態: {status_text}")
+        print(f"サーバータイプ: {results.get('server_type', 'Unknown')}")
+        
+        if results.get('model'):
+            print(f"モデル: {results['model']}")
+        
+        if results.get('data_stats'):
+            print("\n📊 データ統計:")
+            data_stats = results['data_stats']
+            print(f"・投稿数: {data_stats.get('total_posts', 0):,}件")
+            print(f"・ユーザー数: {data_stats.get('total_users', 0):,}人")
+            if data_stats.get('total_summaries'):
+                print(f"・要約数: {data_stats['total_summaries']:,}件")
+            if data_stats.get('total_tags'):
+                print(f"・タグ数: {data_stats['total_tags']:,}件")
+
+    
     @rpc_method
     async def vector_search(self, args) -> None:
         """vector_searchコマンドの処理"""
         results = await self.client.vector_search(args.query, args.top_k, args.mode, args.weights)
         data = results.get("data", [])
-        print(f"検索結果: {len(data)}件 (mode: {args.mode})")
-        for i, (post_id, similarity) in enumerate(data[:10], 1):
-            print(f"{i:2d}. similarity={similarity:.5f}, post_id={post_id}")
+        print(f"🔍 ベクトル検索結果: {len(data)}件 (mode: {args.mode})\n")
+        
+        for i, (post_id, similarity) in enumerate(data, 1):
+            print(f"{i}. similarity={similarity:.5f}, post_id={post_id}")
     
     @rpc_method
     async def search_similar(self, args) -> None:
         """search_similarコマンドの処理"""
-        import json
         search_settings = None
         if args.top_k is not None:
             search_settings = SearchSettings(args.top_k)
         results = await self.client.search_similar(args.query, search_settings, args.mode, args.weights)
-        print(f"類似検索結果: {len(results)}件 (mode: {args.mode})")
-        print(json.dumps(results, indent=2, ensure_ascii=False))
+        
+        print(f"🔍 検索結果: {len(results)}件 (クエリ: \"{args.query}\")\n")
+        
+        for i, result in enumerate(results, 1):
+            post = result['post']
+            score = result['score']
+            
+            print(f"{i}. [{score:.3f}] @{post['user']} ({post['timestamp']}) {post['url']}")
+            
+            # 投稿内容の処理（改行保持、空行詰め）
+            import re
+            content = re.sub(r'\n\s*\n', '\n', post['content']).strip()
+            print(f"   {content}\n")
     
     @rpc_method
     async def get_user_stats(self, args) -> None:
         """get_user_statsコマンドの処理"""
         results = await self.client.get_user_stats(args.limit)
-        print(f"ユーザー統計: {len(results)}人")
-        for i, stat in enumerate(results[:20], 1):
-            print(f"{i:2d}. {stat['user']}: {stat['post_count']}投稿")
+        print(f"👥 ユーザー別投稿統計 (上位{len(results)}人)\n")
+        
+        for i, stat in enumerate(results, 1):
+            post_count = f"{stat['post_count']:,}"
+            print(f"{i}. {stat['user']}: {post_count}投稿")
     
     @rpc_method
     async def get_database_stats(self, args) -> None:
         """get_database_statsコマンドの処理"""
         results = await self.client.get_database_stats()
-        print("データベース統計:")
-        print(f"  総投稿数: {results['total_posts']:,}件")
-        print(f"  総ユーザー数: {results['total_users']:,}人")
+        print("📊 データベース統計\n")
+        print(f"総投稿数: {results['total_posts']:,}件")
+        print(f"総ユーザー数: {results['total_users']:,}人")
         date_range = results.get('date_range', {})
         if date_range:
-            print(f"  データ期間: {date_range.get('earliest', '')} ～ {date_range.get('latest', '')}")
+            print(f"データ期間: {date_range.get('earliest', '')} ～ {date_range.get('latest', '')}")
     
     @rpc_method
     async def search_posts_by_text(self, args) -> None:
         """search_posts_by_textコマンドの処理"""
         results = await self.client.search_posts_by_text(args.search_term, args.limit, args.source)
-        print(f"テキスト検索結果: {len(results)}件 (source: {args.source})")
-        for i, post in enumerate(results[:10], 1):
+        print(f"📝 テキスト検索結果: {len(results)}件 (検索語: \"{args.search_term}\")\n")
+        
+        for i, post in enumerate(results, 1):
             user = post.get('user', 'unknown')
-            content = post.get('content', '')[:100]  # 最初の100文字のみ表示
+            content = post.get('content', '')
             timestamp = post.get('timestamp', '')
-            print(f"{i:2d}. @{user} [{timestamp}]")
-            print(f"    {content}...")
+            
+            print(f"{i}. @{user} ({timestamp})")
+            
+            # 投稿内容の処理（改行保持、空行詰め）
+            import re
+            content = re.sub(r'\n\s*\n', '\n', content).strip()
+            print(f"   {content}\n")
     
     @rpc_method
     async def get_user_list(self, args) -> None:
         """get_user_listコマンドの処理"""
         results = await self.client.get_user_list()
         total_users = len(results)
-        print(f"ユーザー一覧: 総数 {total_users}人")
+        print(f"👤 ユーザー一覧: 総数 {total_users:,}人\n")
         
         # 最初の10件を表示
         for i, user in enumerate(results[:10], 1):
-            print(f"{i:2d}. {user}")
+            print(f"{i}. {user}")
         
         # 10件超過の場合は縦点を表示
         if total_users > 10:
-            print("    ...")
-            print(f"(総数: {total_users}人)")
+            print("   ...")
+            print(f"\n(総数: {total_users:,}人)")
 
 
 async def main():
     """メイン関数（テスト用）"""
     command = TwilogCommand()
     await command.execute()
-
 
 if __name__ == "__main__":
     asyncio.run(main())
