@@ -13,6 +13,18 @@ from settings import DEFAULT_MODE, SearchSettings
 from twilog_client import TwilogClient
 from safe_input import safe_text_input
 from user_info import UserInfo
+from command import CommandHandler
+
+# グローバル変数
+search_settings = None
+user_info = None
+last_search_results = []
+current_display_index = 0
+last_query = ""
+
+# グローバルコマンドハンドラー
+command_handler = CommandHandler()
+command = command_handler.command
 
 
 async def test_websocket_connection(client):
@@ -81,22 +93,71 @@ def show_results(results, start_index, top_k, total_count, query):
     console.print(Rule(f"検索結果: {range_text} (クエリ: '{query}')", style="dim"))
 
 
-def show_help():
-    """ヘルプメッセージを表示"""
-    print("\n=== ヘルプ ===")
-    print("特殊コマンド:")
-    print("  /help, /?  - このヘルプを表示")
-    print("  /user  - ユーザーフィルタリング設定")
-    print("  /date  - 日付フィルタリング設定")
-    print("  /top   - 表示件数設定")
-    print("  /mode  - 検索モード設定")
-    print("  /next  - 次の検索結果を表示")
-    print("  /exit, /quit, /q  - プログラム終了")
-    print("\n検索:")
-    print("  検索クエリを入力すると意味的検索を実行")
-    print("  例: プログラミング, git, 機械学習")
-    print("\n終了:")
-    print("  /exit, /quit, /q で終了")
+@command(["help", "?"], "このヘルプを表示")
+def command_help(handler):
+    """ヘルプコマンド"""
+    handler.show_help()
+
+
+@command(["user"], "ユーザーフィルタリング設定")
+def command_user(handler):
+    """ユーザーフィルタリング設定コマンド"""
+    show_user_filter_menu(search_settings.user_filter, user_info)
+
+
+@command(["date"], "日付フィルタリング設定")
+def command_date(handler):
+    """日付フィルタリング設定コマンド"""
+    show_date_filter_menu(search_settings.date_filter)
+
+
+@command(["top"], "表示件数設定")
+def command_top(handler):
+    """表示件数設定コマンド"""
+    show_top_k_menu(search_settings.top_k)
+
+
+@command(["mode"], "検索モード設定")
+def command_mode(handler):
+    """検索モード設定コマンド"""
+    show_mode_menu(search_settings.mode_settings)
+
+
+@command(["next"], "次の検索結果を表示")
+def command_next(handler):
+    """次の検索結果表示コマンド"""
+    global current_display_index
+    
+    # 前回の検索結果がない場合
+    if not last_search_results:
+        print("検索結果がありません。先に検索を実行してください。")
+        return
+    
+    # 次の表示範囲が存在するかチェック
+    if current_display_index >= len(last_search_results):
+        print("これ以上表示できる結果がありません。")
+        return
+    
+    # 次の結果を表示
+    top_k = search_settings.top_k.get_top_k()
+    show_results(
+        last_search_results, 
+        current_display_index, 
+        top_k, 
+        len(last_search_results), 
+        last_query
+    )
+    
+    # 表示位置を更新
+    current_display_index += top_k
+
+
+@command(["exit", "quit", "q"], "プログラム終了")
+def command_exit(handler):
+    """プログラム終了コマンド"""
+    handler.should_exit = True
+    print("プログラムを終了します")
+
 
 def main():
     """メイン関数"""
@@ -122,6 +183,8 @@ def main():
     if data_stats.get('total_summaries', 0) > 0:
         initial_mode = "maximum"
     
+    # グローバル変数の初期化
+    global search_settings, user_info
     search_settings = SearchSettings()
     search_settings.mode_settings.set_mode(initial_mode)
     
@@ -135,10 +198,8 @@ def main():
     
     user_info = UserInfo(user_list)
     
-    # 検索結果の状態管理
-    last_search_results = []
-    current_display_index = 0
-    last_query = ""
+    # コマンドハンドラーの初期化（グローバル変数を使用）
+    # command_handler = CommandHandler() # 既にグローバルで初期化済み
     
     print("リモート検索システム準備完了")
     print()
@@ -166,7 +227,9 @@ def main():
             print(f"[制限] {' | '.join(restrictions)}")
         
         try:
-            query = safe_text_input("> ", "main", handle_eof=False)
+            # コマンド補完を有効にして入力
+            with command_handler.setup_completion():
+                query = safe_text_input("> ", "main", handle_eof=False)
             if not query:
                 continue
             query = query.strip()
@@ -175,49 +238,11 @@ def main():
             print()
             break
         
-        # 特殊コマンドの処理
-        if query.startswith("/"):
-            command = query[1:]
-            if command in ["help", "?"]:
-                show_help()
-                continue
-            elif command == "user":
-                show_user_filter_menu(search_settings.user_filter, user_info)
-                continue
-            elif command == "date":
-                show_date_filter_menu(search_settings.date_filter)
-                continue
-            elif command == "top":
-                show_top_k_menu(search_settings.top_k)
-                continue
-            elif command == "mode":
-                show_mode_menu(search_settings.mode_settings)
-                continue
-            elif command == "next":
-                # 前回の検索結果がない場合
-                if not last_search_results:
-                    print("検索結果がありません。先に検索を実行してください。")
-                    continue
-                
-                # 次の表示範囲が存在するかチェック
-                if current_display_index >= len(last_search_results):
-                    print("これ以上表示できる結果がありません。")
-                    continue
-                
-                # 次の結果を表示
-                top_k = search_settings.top_k.get_top_k()
-                show_results(last_search_results, current_display_index, top_k, len(last_search_results), last_query)
-                
-                # 表示位置を更新
-                current_display_index += top_k
-                continue
-            elif command in ["exit", "quit", "q"]:
-                print("プログラムを終了します")
-                return
-            else:
-                print(f"エラー: 不明なコマンド '{command}'")
-                show_help()
-                continue
+        # コマンド処理
+        if command_handler.execute(query):
+            if command_handler.should_exit:
+                break
+            continue
         
         # 検索実行（常に100件取得）
         try:
@@ -241,13 +266,14 @@ def main():
             continue
         
         # 検索結果の状態を更新
+        global last_search_results, current_display_index, last_query
         last_search_results = results
         current_display_index = 0
         last_query = query
         
         # 結果表示
         top_k = search_settings.top_k.get_top_k()
-        show_results(last_search_results, current_display_index, top_k, len(last_search_results), last_query)
+        show_results(results, 0, top_k, len(results), query)
         
         # 表示位置を更新
         current_display_index += top_k

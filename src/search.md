@@ -117,3 +117,8 @@
 **Problem**: 検索結果が大量にある場合、設定したtop_k件を超える結果を確認できず、情報の取りこぼしが発生していた。また、検索のたびに同じ結果を再取得するため、サーバー負荷とレスポンス時間が課題となっていた。
 
 **Solution**: 検索実行時に常に100件取得し、内部でlast_search_results、current_display_index、last_queryを管理するページネーション機能を実装。初回検索時は最初のtop_k件のみ表示し、/nextコマンドで次のtop_k件を順次表示する仕組みを採用。show_results関数でstart_index、top_k、total_countを管理し、表示範囲（例：1-10/100件）を明示。これにより、1回の検索で大量の結果を効率的に閲覧でき、サーバー負荷を削減しながらユーザーの情報取得効率を向上させた。
+
+### コマンドシステムの分離と統一化
+**Problem**: 検索アプリケーション内のコマンド処理ロジック（/help、/user、/date、/top、/mode、/next、/exit等）がmain関数に直接実装されており、40行以上のif-elif文で処理されていた。新しいコマンドの追加時に複数箇所の修正が必要で、コマンド処理ロジックの再利用が困難だった。
+
+**Solution**: CommandHandlerクラスとcommand.pyを新設し、@commandデコレーターによる宣言的なコマンド登録システムを実装。各コマンド関数は`@command(["alias1", "alias2"], "説明")`で登録され、`command_handler.execute(query)`で統一的に実行される設計に変更。コマンド補完機能（Tab補完）も統合し、/入力時に利用可能コマンドが自動補完される。検索結果状態管理（last_search_results、current_display_index、last_query）をグローバル変数化し、各コマンド関数から直接参照・更新することで、CommandHandlerの汎用性を維持。これにより、main関数のコマンド処理を数行に簡約化し、新コマンドの追加が関数定義だけで完結する拡張性を実現した。

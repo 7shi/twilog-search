@@ -60,3 +60,13 @@
 **Problem**: グローバル変数`_user_completion_list`と関数`_user_completer`を使用したユーザー名補完機能は、状態管理が分散しており、コードの再利用性と保守性が低下していた。また、ユーザー一覧の更新や補完機能の拡張が困難だった。
 
 **Solution**: UserInfoクラスとの統合により、ユーザー情報管理を一元化。`safe_text_input_with_user_completion`関数はUserInfoインスタンスを受け取り、`user_info.user_completer`メソッドを`set_completer`に直接設定する設計に変更。グローバル変数を完全に削除し、ユーザー一覧の管理、補完機能、類似ユーザー提案機能を単一のクラスに集約。これにより、コードの理解性と保守性が向上し、ユーザー関連機能の拡張が容易になった。
+
+### HistoryManagerのコンテキストマネージャー化
+**Problem**: 履歴の切り替えと復元を手動で行う必要があり、例外発生時に履歴が正しく復元されない可能性があった。また、同じ履歴操作コードが複数の関数で重複していた。
+
+**Solution**: `switch_to(context_name)`メソッドでコンテキストマネージャーを返すように変更。`with history_manager.switch_to(name):`の形で使用することで、自動的な履歴の保存・復元を実現。例外発生時でも確実に元の履歴が復元され、コードの重複も削減された。
+
+### CompletionManagerによる補完機能の統一化
+**Problem**: ユーザー名補完の設定と復元が各関数で個別に実装されており、補完設定管理のコードが重複していた。また、汎用的な補完機能への拡張が困難だった。
+
+**Solution**: `CompletionManager`クラスを実装し、`setup_completion(completer_func, delims)`メソッドで任意の補完機能をコンテキストマネージャーとして提供。補完設定の保存・復元を自動化し、ユーザー名補完以外の用途にも対応可能な汎用的なAPIを実現。`with completion_manager.setup_completion(completer, delims):`の形で安全な補完機能管理を提供。

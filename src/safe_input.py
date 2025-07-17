@@ -49,22 +49,94 @@ class HistoryManager:
             self.histories[context] = current_history
         except:
             pass
+    
+    def switch_to(self, context_name):
+        """指定されたコンテキストに履歴を切り替えるコンテキストマネージャー"""
+        return _HistoryContext(self, context_name)
+
+
+class _HistoryContext:
+    """履歴切り替えのコンテキストマネージャー"""
+    def __init__(self, manager, context_name):
+        self.manager = manager
+        self.context_name = context_name
+        self.saved_history = []
+    
+    def __enter__(self):
+        # 指定された履歴コンテキストに切り替え
+        self.saved_history = self.manager.set_history(self.context_name)
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # 指定された履歴コンテキストを保存
+        self.manager.save_history(self.context_name, [])
+        
+        # 以前の履歴を復元
+        try:
+            readline.clear_history()
+            for item in self.saved_history:
+                readline.add_history(item)
+        except:
+            pass
+
+
+class CompletionManager:
+    """readline補完の管理クラス"""
+    def __init__(self):
+        pass
+    
+    def setup_completion(self, completer_func, delims=' \t\n'):
+        """補完機能の設定"""
+        return _CompletionContext(completer_func, delims)
+
+
+class _CompletionContext:
+    """補完設定のコンテキストマネージャー"""
+    def __init__(self, completer_func, delims):
+        self.completer_func = completer_func
+        self.delims = delims
+        self.saved_completer = None
+        self.saved_delims = None
+    
+    def __enter__(self):
+        # 元の補完設定を保存
+        self.saved_completer = readline.get_completer()
+        self.saved_delims = readline.get_completer_delims()
+        
+        # 補完機能を設定
+        if self.completer_func:
+            readline.set_completer(self.completer_func)
+            readline.set_completer_delims(self.delims)
+            
+            # readline補完を有効化
+            readline.parse_and_bind("tab: complete")
+        
+        return self
+    
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        # 補完設定を復元
+        try:
+            readline.set_completer(self.saved_completer)
+            readline.set_completer_delims(self.saved_delims)
+            
+            # Tab補完を無効化（デフォルトの動作に戻す）
+            readline.parse_and_bind("tab: self-insert")
+        except:
+            pass
 
 
 # Escキーでのファイル名補完を無効化
 readline.set_completer(None)
 
-# グローバルな履歴管理インスタンス
+# グローバルなインスタンス
 history_manager = HistoryManager()
+completion_manager = CompletionManager()
 
 
 
 def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
     """安全なテキスト入力"""
-    # 指定された履歴コンテキストに切り替え
-    saved_history = history_manager.set_history(history)
-    
-    try:
+    with history_manager.switch_to(history):
         while True:
             try:
                 user_input = input(prompt)
@@ -82,71 +154,38 @@ def safe_text_input(prompt, history: str, validator=None, handle_eof=True):
                 continue
             
             return user_input
-    finally:
-        # 指定された履歴コンテキストを保存
-        history_manager.save_history(history, [])
-        
-        # 以前の履歴を復元
-        readline.clear_history()
-        for item in saved_history:
-            readline.add_history(item)
 
 
 def safe_text_input_with_user_completion(prompt, history: str, user_info, validator=None, handle_eof=True):
     """ユーザー名補完機能付きの安全なテキスト入力"""
-    # 指定された履歴コンテキストに切り替え
-    saved_history = history_manager.set_history(history)
-    
-    # 元の補完設定を保存
-    saved_completer = readline.get_completer()
-    saved_delims = readline.get_completer_delims()
-    
-    try:
-        # ユーザー名補完を設定
-        if user_info:
-            readline.set_completer(user_info.user_completer)
-            readline.set_completer_delims(' \t\n,')  # コンマ区切り対応
-            
-            # readline補完を有効化
-            readline.parse_and_bind("tab: complete")
-            
-            # 補完機能の案内
-            if len(user_info.user_list) > 0:
-                console = Console()
-                console.print(f"[dim]Tabキーでユーザー名補完を使用できます ({len(user_info.user_list)}件)[/dim]")
+    with history_manager.switch_to(history):
+        # ユーザー名補完の設定
+        completer_func = user_info.user_completer if user_info else None
+        delims = ' \t\n,' if user_info else ' \t\n'  # コンマ区切り対応
         
-        while True:
-            try:
-                user_input = input(prompt)
-            except EOFError:
-                if handle_eof:
-                    print()
-                    return None  # Ctrl+Dの場合はNoneを返す
-                else:
-                    raise
-            
-            # バリデーション
-            if user_input and validator and not validator(user_input):
-                console = Console()
-                console.print("[red]入力形式が正しくありません。再入力してください。[/red]")
-                continue
-            
-            return user_input
-    finally:
-        # 補完設定を復元
-        readline.set_completer(saved_completer)
-        readline.set_completer_delims(saved_delims)
+        # 補完機能の案内
+        if user_info and len(user_info.user_list) > 0:
+            console = Console()
+            console.print(f"[dim]Tabキーでユーザー名補完を使用できます ({len(user_info.user_list)}件)[/dim]")
         
-        # Tab補完を無効化（デフォルトの動作に戻す）
-        readline.parse_and_bind("tab: self-insert")
-        
-        # 指定された履歴コンテキストを保存
-        history_manager.save_history(history, [])
-        
-        # 以前の履歴を復元
-        readline.clear_history()
-        for item in saved_history:
-            readline.add_history(item)
+        with completion_manager.setup_completion(completer_func, delims):
+            while True:
+                try:
+                    user_input = input(prompt)
+                except EOFError:
+                    if handle_eof:
+                        print()
+                        return None  # Ctrl+Dの場合はNoneを返す
+                    else:
+                        raise
+                
+                # バリデーション
+                if user_input and validator and not validator(user_input):
+                    console = Console()
+                    console.print("[red]入力形式が正しくありません。再入力してください。[/red]")
+                    continue
+                
+                return user_input
 
 
 def safe_number_input(prompt, history: str, min_val=None, max_val=None, default=None):

@@ -38,12 +38,13 @@
 ### 単独機能ツール
 - **text_proc.py**: クエリパース機能、シェル風構文、クォート・エスケープ・除外条件サポート、V|T複合検索構文
 - **safe_input.py**: 安全なテキスト入力機能、readline履歴管理、検証機能
+- **command.py**: コマンドシステム基盤、@commandデコレーター、Tab補完機能
 - **mcp_wrap.py**: MCPサーバーとの対話的通信ラッパー、JSON-RPCクライアント
 
 ## アーキテクチャ
 このプロジェクトは責務分離を重視した統合設計を採用：
 
-- **UI層**: search.py（軽量フロントエンド + 設定管理）、safe_input.py（入力処理）、settings_ui.py（設定UI）
+- **UI層**: search.py（軽量フロントエンド + 設定管理）、safe_input.py（入力処理）、settings_ui.py（設定UI）、command.py（コマンド処理基盤）
 - **統合サーバー層**: twilog_server.py（ベクトル検索 + SearchEngine統合 + MCP互換メソッド + 設定デシリアライズ + V|T複合検索）
 - **ロジック層**: search_engine.py（ステートレス・フィルタリング処理中核）、settings.py（統合設定データ + シリアライズ）、text_proc.py（クエリパース）
 - **データ層**: data_csv.py（CSVアクセス）
