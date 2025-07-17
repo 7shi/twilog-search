@@ -81,3 +81,8 @@
 **Problem**: `_extract_vector_data`と`_decode_vector_size`のヘルパーメソッドにより抽象化層が過剰となり、単純なBase64デコード処理に対してコードが複雑化していた。また、例外ベースエラーハンドリング導入により、これらのユーティリティメソッドの必要性が低下した。
 
 **Solution**: `embed_text_with_details`メソッドで`result.get("vector")`による直接アクセスと`base64.b64decode`による直接デコードを採用。処理の流れが明確になり、不要な抽象化を排除してコードの理解しやすさと保守性を向上。エラー時は自然な例外が発生し、統一されたエラーハンドリングで処理される設計を実現。
+
+### tensorデコード機能の完全な実装
+**Problem**: `embed_text`のBase64+safetensors形式戻り値を、実際のtensorオブジェクトとして利用したい場合、クライアント側でBase64デコード・safetensorsデシリアライゼーション処理を毎回実装する必要があった。
+
+**Solution**: `decode_vector`メソッドを実装し、`embed_text`の戻り値から直接PyTorchテンソルを抽出可能にした。torch・safetensorsのimportを関数内で局所化することで、これらの依存関係を必要としないクライアントでも他の機能を使用可能。Base64→safetensors→tensorの完全な復元処理を一元化し、クライアント側でのベクトル操作を簡潔に実現。

@@ -117,6 +117,23 @@ class EmbedClient(BaseEmbedClient):
         """クエリをベクトル化"""
         return await self._send_request("embed_text", {"text": text})
     
+    def decode_vector(self, result: Dict[str, Any]):
+        """embed_textの戻り値からtensorを抽出"""
+        import torch
+        import safetensors.torch
+        
+        vector_data = result.get("vector")
+        if not vector_data:
+            raise ValueError("vectorフィールドが見つかりません")
+        
+        # Base64デコード
+        decoded_data = base64.b64decode(vector_data)
+        
+        # safetensorsからtensorを復元
+        tensors = safetensors.torch.load(decoded_data)
+        
+        return tensors.get("vector")
+    
     async def embed_text_with_details(self, query: str) -> None:
         """詳細情報付きでベクトル化を実行し結果を表示"""
         print(f"クエリ: {query}")
