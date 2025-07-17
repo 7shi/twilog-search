@@ -7,7 +7,7 @@ import asyncio
 from rich.console import Console
 from simple_term_menu import TerminalMenu
 from safe_input import safe_text_input, safe_number_input, safe_date_input, yes_no_menu, safe_text_input_with_user_completion
-from settings import UserFilterSettings, DateFilterSettings, TopKSettings, SearchModeSettings
+from settings import UserFilterSettings, DateFilterSettings, TopKSettings, SearchModeSettings, ViewModeSettings
 
 
 def _add_menu_option(options: list, index: int, is_current: bool, text: str) -> None:
@@ -663,3 +663,40 @@ def _handle_custom_weights(settings: SearchModeSettings):
     except ValueError:
         console.print("[red]エラー: 数値を入力してください[/red]")
         return False
+
+
+def show_view_mode_menu(settings: ViewModeSettings):
+    """表示モード設定メニューを表示"""
+    console = Console()
+    
+    # 表示モード選択肢
+    view_mode_options = [
+        ("normal", "通常モード（Panel表示、top_k件）"),
+        ("list", "一覧モード（1行1情報、100件固定）"),
+        ("detail", "詳細モード（Panel内にcontent/summary/reasoning分離）")
+    ]
+    
+    console.print(f"\n[bold]=== 表示モード設定 ===[/bold]")
+    console.print(f"現在の設定: {settings.format_status()}")
+    
+    # メニューオプション作成
+    menu_items = []
+    for i, (mode, description) in enumerate(view_mode_options, 1):
+        if mode == settings.get_view_mode():
+            menu_items.append(f"[{i}] ● {description}")
+        else:
+            menu_items.append(f"[{i}] {description}")
+    
+    menu_items.append(f"[0] 戻る")
+    
+    terminal_menu = TerminalMenu(menu_items, title="表示モードを選択してください:", show_search_hint=True)
+    choice = terminal_menu.show()
+    
+    if choice is None:  # ESCキー
+        return
+    elif choice == len(menu_items) - 1:  # [0] 戻る
+        return
+    elif choice < len(view_mode_options):  # モード選択
+        mode, description = view_mode_options[choice]
+        settings.set_view_mode(mode)
+        console.print(f"[green]表示モードを '{settings.format_status()}' に設定しました[/green]")

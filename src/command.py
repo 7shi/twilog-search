@@ -37,11 +37,29 @@ class CommandHandler:
         if not query.startswith("/"):
             return False
         
-        command_name = query[1:]  # "/" を除去
+        # コマンドと引数を分離（最初のスペースで分割）
+        command_part = query[1:]  # "/" を除去
+        if not command_part:
+            return False
+        
+        # 最初のスペースで分割
+        if ' ' in command_part:
+            command_name, args_str = command_part.split(' ', 1)
+        else:
+            command_name = command_part
+            args_str = ""
         
         if command_name in self.command_registry:
             try:
-                self.command_registry[command_name]['func'](self)
+                func = self.command_registry[command_name]['func']
+                # 引数を想定するハンドラには引数文字列を渡す
+                import inspect
+                sig = inspect.signature(func)
+                if len(sig.parameters) > 1:  # handler以外のパラメータがある場合
+                    args = [self, args_str]
+                else:
+                    args = [self]
+                func(*args)
             except Exception as e:
                 console = Console()
                 console.print(f"[red]コマンドエラー: {e}[/red]")
@@ -51,6 +69,48 @@ class CommandHandler:
             console.print(f"[red]エラー: 不明なコマンド '{command_name}'[/red]")
             self.show_help()
             return True
+    
+    def parse_range_specification(self, spec: str) -> List[int]:
+        """
+        範囲指定文字列を解析してランク番号のリストを返す
+        
+        Args:
+            spec: 範囲指定文字列 (例: "1,5", "23-50", "1-3,7,10-15")
+        
+        Returns:
+            list: ランク番号のリスト（1ベース）
+        """
+        if not spec or not spec.strip():
+            return []
+        
+        ranks = []
+        parts = spec.split(',')
+        
+        for part in parts:
+            part = part.strip()
+            if not part:
+                continue
+                
+            if '-' in part:
+                # 範囲指定（例：23-50）
+                try:
+                    start, end = part.split('-', 1)
+                    start = int(start.strip())
+                    end = int(end.strip())
+                    if start <= end:
+                        ranks.extend(range(start, end + 1))
+                except ValueError:
+                    continue
+            else:
+                # 個別指定（例：5）
+                try:
+                    rank = int(part)
+                    ranks.append(rank)
+                except ValueError:
+                    continue
+        
+        # 重複を削除してソート
+        return sorted(list(set(ranks)))
     
     def show_help(self):
         """利用可能なコマンドのヘルプを表示"""

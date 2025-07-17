@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Optional, List, Dict, Any
 
 DEFAULT_MODE = "content"
+DEFAULT_VIEW_MODE = "normal"
 
 
 class UserFilterSettings:
@@ -330,6 +331,39 @@ class SearchModeSettings:
         return self.mode
 
 
+class ViewModeSettings:
+    """表示モード設定クラス"""
+    
+    def __init__(self, view_mode: str = DEFAULT_VIEW_MODE):
+        """
+        初期化
+        
+        Args:
+            view_mode: 表示モード（normal, list, detail）
+        """
+        self.view_mode = view_mode
+    
+    def set_view_mode(self, view_mode: str):
+        """表示モードを設定"""
+        if view_mode in ["normal", "list", "detail"]:
+            self.view_mode = view_mode
+        else:
+            raise ValueError(f"無効な表示モード: {view_mode}")
+    
+    def get_view_mode(self) -> str:
+        """表示モードを取得"""
+        return self.view_mode
+    
+    def format_status(self) -> str:
+        """表示モード設定状態を文字列でフォーマット"""
+        mode_names = {
+            "normal": "通常",
+            "list": "一覧", 
+            "detail": "詳細"
+        }
+        return mode_names.get(self.view_mode, self.view_mode)
+
+
 class SearchSettings:
     """検索設定を統合管理するクラス"""
     
@@ -344,6 +378,7 @@ class SearchSettings:
         self.date_filter = DateFilterSettings()
         self.top_k = TopKSettings(initial_top_k)
         self.mode_settings = SearchModeSettings()
+        self.view_mode = ViewModeSettings()
     
     def to_dict(self) -> Dict[str, Any]:
         """設定をDict形式にシリアライズ"""
