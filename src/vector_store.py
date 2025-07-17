@@ -39,6 +39,19 @@ class VectorStore:
         except (json.JSONDecodeError, IOError) as e:
             raise RuntimeError(f"メタデータファイルの読み込みに失敗しました: {e}")
     
+    def get_relative_path(self, relative_path: str) -> Path:
+        """
+        vector_dirの親ディレクトリからの相対パスで指定したファイルのPathを返す
+        
+        Args:
+            relative_path: vector_dirの親ディレクトリからの相対パス
+            
+        Returns:
+            絶対パス
+        """
+        parent_dir = self.vector_dir.parent
+        return parent_dir / relative_path
+    
     def load_vectors(self) -> None:
         """実際のベクトル読み込み"""
         if self.loaded:

@@ -8,6 +8,7 @@ from settings import SearchSettings
 from data_csv import TwilogDataAccess
 from text_proc import parse_search_terms, parse_pipeline_query
 from vector_store import VectorStore
+from batch_reader import BatchReader
 
 
 class SearchEngine:
@@ -36,6 +37,9 @@ class SearchEngine:
         
         # CSVパスを取得
         self.csv_path = self._load_csv_path()
+        
+        # バッチリーダーを初期化
+        self.batch_reader: Optional[BatchReader] = None
         
         # 初期化フラグ
         self.initialized = False
@@ -78,10 +82,24 @@ class SearchEngine:
         if not csv_relative_path:
             return ""
         
-        # embeddings_dirの親ディレクトリからの相対パスを絶対パスに変換
-        embeddings_parent = self.embeddings_dir.parent
-        csv_absolute_path = embeddings_parent / csv_relative_path
+        # VectorStoreのget_relative_pathを使用
+        csv_absolute_path = self.content_store.get_relative_path(csv_relative_path)
         return str(csv_absolute_path.resolve())
+    
+    def _create_batch_reader_from_reasoning(self) -> Optional[BatchReader]:
+        """reasoningベクトルストアのmeta.jsonからバッチリーダーを作成"""
+        if self.reasoning_store is None:
+            return None
+        
+        reasoning_metadata = self.reasoning_store.metadata
+        source_path = reasoning_metadata.get("source_path")
+        if not source_path:
+            return None
+        
+        # VectorStoreのget_relative_pathを使用
+        jsonl_absolute_path = self.reasoning_store.get_relative_path(source_path)
+        
+        return BatchReader(jsonl_absolute_path)
     
     def initialize(self) -> None:
         """実際の初期化処理を実行"""
@@ -106,6 +124,9 @@ class SearchEngine:
             if reasoning_path.exists():
                 self.reasoning_store = VectorStore(str(reasoning_path))
                 self.reasoning_store.load_vectors()
+                
+                # reasoningのmetadataからバッチリーダーを作成
+                self.batch_reader = self._create_batch_reader_from_reasoning()
         
         # summaryベクトルストア
         if self.summary_dir is not None:
@@ -114,11 +135,13 @@ class SearchEngine:
                 self.summary_store = VectorStore(str(summary_path))
                 self.summary_store.load_vectors()
         
-        # タグデータの読み込み
-        self._load_summaries_data()
-        
-        # タグインデックスの構築
-        self._build_tag_index()
+        # バッチリーダーの初期化
+        if self.batch_reader:
+            self.batch_reader.initialize()
+            
+            # タグデータを取得
+            self.summaries_data = self.batch_reader.summaries_data
+            self.tag_index = self.batch_reader.tag_index
         
         # ハイブリッド検索用の共通post_idsを計算
         self._calculate_common_post_ids()
@@ -624,38 +647,3 @@ class SearchEngine:
         
         return results[:limit]
     
-    def _load_summaries_data(self) -> None:
-        """batch/results.jsonlが存在すれば読み込む"""
-        results_path = self.embeddings_dir.parent / "batch" / "results.jsonl"
-        if not results_path.exists():
-            return
-        
-        import json
-        try:
-            with open(results_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    line = line.strip()
-                    if not line:
-                        continue
-                    
-                    data = json.loads(line)
-                    post_id = data["key"]
-                    self.summaries_data[post_id] = {
-                        "reasoning": data["reasoning"],
-                        "summary": data["summary"],
-                        "tags": data["tags"]
-                    }
-        except (json.JSONDecodeError, KeyError) as e:
-            # タグデータの読み込みに失敗
-            pass
-    
-    def _build_tag_index(self) -> None:
-        """タグから投稿IDへの逆引きインデックスを構築"""
-        self.tag_index = {}
-        
-        for post_id, summary_data in self.summaries_data.items():
-            tags = summary_data.get("tags", [])
-            for tag in tags:
-                if tag not in self.tag_index:
-                    self.tag_index[tag] = []
-                self.tag_index[tag].append(post_id)
