@@ -41,3 +41,13 @@
 **Problem**: サーバー側のデータ構造変更により、検索結果が従来の平坦化された配列`[rank, score, postData]`から構造化されたオブジェクト`{rank, score, post}`形式に変更されたため、従来のデータ処理ロジックでは`toFixed()`エラーが発生し、結果の表示が正常に動作しなくなった。
 
 **Solution**: レスポンス処理ロジックを構造化データ形式に対応するように修正。`result.rank`、`result.score`、`result.post`としてアクセスし、型安全性チェック（`typeof result.score === 'number'`）を追加してエラーを防止。これにより、サーバー側のStreaming Extensions仕様変更と連動し、一貫性のある構造化データ処理を実現した。
+
+### 検索モード対応とパラメータ拡張
+**Problem**: TwilogClientで提供されている詳細な検索機能（modeパラメータによる検索対象指定、weightsパラメータによる重み付け、search_posts_by_textのsource指定）がMCPサーバーでサポートされておらず、機能の不整合が発生していた。また、CLIで利用可能な多様な検索オプションをMCP経由では利用できないため、統一的なAPI体験が提供できていなかった。
+
+**Solution**: search_similarツールにmodeパラメータ（content, reasoning, summary, average, maximum, minimum）とweightsパラメータ（重み付け配列）を追加し、search_posts_by_textツールにsourceパラメータ（content, reasoning, summary）を追加。これらのパラメータをWebSocketリクエストに適切に転送することで、TwilogClientと同等の検索機能をMCP経由でも利用可能にした。
+
+### YAML形式による統一的なレスポンス表示
+**Problem**: 各ツールのレスポンス表示において、カスタムフォーマット処理が個別に実装されており、データ構造の変更時に複数箇所の修正が必要になっていた。特に、reasoning、summary、tagsといった新しい項目が追加された際に、表示ロジックの更新を忘れるリスクがあった。また、手動でのフォーマット処理により、表示の一貫性が保たれていなかった。
+
+**Solution**: js-yamlライブラリを導入し、全ての構造化レスポンス（search_similar、get_user_stats、get_database_stats、search_posts_by_text、get_status）をYAML形式で統一して表示。これにより、新しい項目が追加されても自動的に表示され、フォーマット処理のメンテナンス負荷を大幅に削減。階層構造の可読性向上により、MCPクライアントでのデータ理解も容易になった。

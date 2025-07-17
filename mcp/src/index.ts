@@ -8,6 +8,7 @@ import {
   Tool,
 } from '@modelcontextprotocol/sdk/types.js';
 import WebSocket from 'ws';
+import yaml from 'js-yaml';
 // 古いSQLiteベースの実装は削除し、twilog_server.pyのラッパーとして動作
 
 // twilog_server.pyのsearch_similarメソッドと同じ形式の結果を期待
@@ -119,6 +120,17 @@ class TwilogMCPServer {
                     },
                   },
                 },
+                mode: {
+                  type: 'string',
+                  description: '検索モード',
+                  enum: ['content', 'reasoning', 'summary', 'average', 'maximum', 'minimum'],
+                  default: 'content',
+                },
+                weights: {
+                  type: 'array',
+                  items: { type: 'number' },
+                  description: '重み付けモード用の重み（合計1.0想定）',
+                },
               },
               required: ['query'],
             },
@@ -178,6 +190,12 @@ class TwilogMCPServer {
                   minimum: 1,
                   maximum: 1000,
                   default: 50,
+                },
+                source: {
+                  type: 'string',
+                  description: '検索対象ソース',
+                  enum: ['content', 'reasoning', 'summary'],
+                  default: 'content',
                 },
               },
               required: ['search_term'],
@@ -378,10 +396,7 @@ class TwilogMCPServer {
         content: [
           {
             type: 'text',
-            text: `Twilog Server Status:
-- Status: ${response.status || 'unknown'}
-- Ready: ${response.ready || false}
-- URL: ${url}`,
+            text: `Twilog Server Status:\n\n${yaml.dump(response, { indent: 2 })}`,
           },
         ],
       };
@@ -399,7 +414,7 @@ class TwilogMCPServer {
 
 
   private async handleTwilogSearch(args: any) {
-    const { query, top_k, user_filter, date_filter } = args;
+    const { query, top_k, user_filter, date_filter, mode, weights } = args;
     
     if (!query) {
       throw new Error('検索クエリが指定されていません');
@@ -408,6 +423,15 @@ class TwilogMCPServer {
     try {
       // twilog_server.pyのsearch_similarメソッドを直接呼び出し
       const params: any = { query };
+      
+      // modeとweightsを追加
+      if (mode !== undefined) {
+        params.mode = mode;
+      }
+      
+      if (weights !== undefined) {
+        params.weights = weights;
+      }
       
       // 個別のオプションをsettingsとしてまとめる
       const settings: any = {};
@@ -450,27 +474,13 @@ class TwilogMCPServer {
         };
       }
       
-      const resultText = results
-        .map((result: any) => {
-          // 新しい構造化データを処理
-          const rank = result.rank || 0;
-          const score = typeof result.score === 'number' ? result.score.toFixed(5) : 'N/A';
-          const postData = result.post || {};
-          
-          return `${rank}位: ${score} - @${postData.user || 'unknown'}
-${postData.content || ''}
-[${postData.timestamp || ''}] ${postData.url || ''}
----`;
-        })
-        .join('\n');
-
       return {
         content: [
           {
             type: 'text',
             text: `検索結果 (クエリ: "${query}", 件数: ${results.length}):
 
-${resultText}`,
+${yaml.dump(results, { indent: 2 })}`,
           },
         ],
       };
@@ -501,19 +511,13 @@ ${resultText}`,
       
       const userStats = await this.sendWebSocketRequest(this.websocketUrl, request);
       
-      const statsText = userStats
-        .map((stat: any, index: number) => `${index + 1}位: ${stat.user} (${stat.post_count}投稿)`)
-        .join('\n');
-
       return {
         content: [
           {
             type: 'text',
             text: `ユーザー別投稿統計 (上位${userStats.length}人):
 
-${statsText}
-
-総ユーザー数: ${userStats.length}人`,
+${yaml.dump(userStats, { indent: 2 })}`,
           },
         ],
       };
@@ -540,9 +544,7 @@ ${statsText}
             type: 'text',
             text: `データベース統計:
 
-総投稿数: ${stats.total_posts.toLocaleString()}件
-総ユーザー数: ${stats.total_users.toLocaleString()}人
-データ期間: ${stats.date_range.earliest} ～ ${stats.date_range.latest}`,
+${yaml.dump(stats, { indent: 2 })}`,
           },
         ],
       };
@@ -552,7 +554,7 @@ ${statsText}
   }
 
   private async handleSearchPostsByText(args: any) {
-    const { search_term, limit = 50 } = args;
+    const { search_term, limit = 50, source = 'content' } = args;
 
     if (!search_term) {
       throw new Error('検索文字列が指定されていません');
@@ -563,7 +565,7 @@ ${statsText}
       const request = {
         jsonrpc: "2.0",
         method: "search_posts_by_text",
-        params: { search_term, limit },
+        params: { search_term, limit, source },
         id: Date.now()
       };
       
@@ -580,22 +582,13 @@ ${statsText}
         };
       }
 
-      const resultText = posts
-        .map((post: any, index: number) => 
-          `${index + 1}位: @${post.user || 'unknown'}
-${post.content}
-[${post.timestamp}] ${post.url || ''}
----`
-        )
-        .join('\n');
-
       return {
         content: [
           {
             type: 'text',
             text: `テキスト検索結果 (検索語: "${search_term}", 件数: ${posts.length}):
 
-${resultText}`,
+${yaml.dump(posts, { indent: 2 })}`,
           },
         ],
       };
