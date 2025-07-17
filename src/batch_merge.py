@@ -264,6 +264,11 @@ class JsonlProcessor:
         """
         expected_fields = {'reasoning', 'summary', 'tags'}
         actual_fields = set(json_data.keys())
+        
+        # tagsフィールドが存在する場合、各タグの先頭・末尾の空白を削除
+        if 'tags' in json_data and isinstance(json_data['tags'], list):
+            json_data['tags'] = [tag.strip() if isinstance(tag, str) else tag for tag in json_data['tags']]
+        
         return actual_fields == expected_fields
     
     def get_results(self) -> Tuple[List[Tuple[int, Dict[str, Any]]], int, Dict[str, int], List[Dict[str, Any]], List[int], int]:
