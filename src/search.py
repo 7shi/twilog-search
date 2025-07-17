@@ -21,6 +21,7 @@ user_info = None
 last_search_results = []
 current_display_index = 0
 last_query = ""
+should_exit = False
 
 # グローバルコマンドハンドラー
 command_handler = CommandHandler()
@@ -155,7 +156,8 @@ def command_next(handler):
 @command(["exit", "quit", "q"], "プログラム終了")
 def command_exit(handler):
     """プログラム終了コマンド"""
-    handler.should_exit = True
+    global should_exit
+    should_exit = True
     print("プログラムを終了します")
 
 
@@ -240,7 +242,7 @@ def main():
         
         # コマンド処理
         if command_handler.execute(query):
-            if command_handler.should_exit:
+            if should_exit:
                 break
             continue
         

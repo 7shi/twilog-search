@@ -12,7 +12,6 @@ class CommandHandler:
     """コマンド処理を行うクラス"""
     
     def __init__(self):
-        self.should_exit = False
         self.command_registry: Dict[str, Dict] = {}
     
     def command(self, aliases: List[str], description: str):
