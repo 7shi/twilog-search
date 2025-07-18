@@ -60,7 +60,7 @@ def find_similar_tags(reader: TagReader, target_tag: str, top_k: int = 12) -> li
 
 def display_tag_similarities(reader: TagReader, tag_counter: Counter, top_n: int = 30):
     """出現数上位のタグについて、類似タグを表示"""
-    print(f"\n出現数上位{top_n}タグの類似タグ分析（コサイン類似度上位12個）:")
+    print(f"出現数上位{top_n}タグの類似タグ分析（コサイン類似度上位12個）:")
     print("-" * 100)
     
     # 上位タグを取得
