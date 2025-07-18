@@ -11,6 +11,16 @@ from typing import Dict, Any, List, Tuple
 from tqdm import tqdm
 
 
+def normalize_tag(tag: str) -> str:
+    """
+    タグを正規化する（空白削除と先頭#除去）
+    """
+    normalized = tag.strip()
+    if normalized.startswith('#'):
+        normalized = normalized[1:]
+    return normalized
+
+
 def is_blocked_response(response_data: Dict[str, Any]) -> bool:
     """
     レスポンスがブロックされているかどうかを判定する
@@ -265,9 +275,9 @@ class JsonlProcessor:
         expected_fields = {'reasoning', 'summary', 'tags'}
         actual_fields = set(json_data.keys())
         
-        # tagsフィールドが存在する場合、各タグの先頭・末尾の空白を削除
-        if 'tags' in json_data and isinstance(json_data['tags'], list):
-            json_data['tags'] = [tag.strip() if isinstance(tag, str) else tag for tag in json_data['tags']]
+        # tagsフィールドが存在する場合、各タグを正規化
+        if 'tags' in json_data:
+            json_data['tags'] = [normalize_tag(tag) for tag in json_data['tags']]
         
         return actual_fields == expected_fields
     
