@@ -11,13 +11,27 @@ from typing import Dict, Any, List, Tuple
 from tqdm import tqdm
 
 
+# 特殊タグ置換ルール
+SPECIAL_TAG_REPLACEMENTS = {
+    "Brainf\nk": "Brainf*ck"
+}
+
+
 def normalize_tag(tag: str) -> str:
     """
-    タグを正規化する（空白削除と先頭#除去）
+    タグを正規化する（空白削除と先頭#除去、特殊置換）
     """
     normalized = tag.strip()
     if normalized.startswith('#'):
         normalized = normalized[1:]
+    
+    # 特殊置換処理
+    if normalized in SPECIAL_TAG_REPLACEMENTS:
+        normalized = SPECIAL_TAG_REPLACEMENTS[normalized]
+    
+    if "\t" in normalized or "\n" in normalized:
+        print(f"警告 [normalize_tag]: 制御文字を含むタグ: {repr(normalized)}", file=sys.stderr)
+    
     return normalized
 
 
@@ -275,9 +289,14 @@ class JsonlProcessor:
         expected_fields = {'reasoning', 'summary', 'tags'}
         actual_fields = set(json_data.keys())
         
-        # tagsフィールドが存在する場合、各タグを正規化
+        # tagsフィールドが存在する場合、各タグを正規化（空白タグはスキップ）
         if 'tags' in json_data:
-            json_data['tags'] = [normalize_tag(tag) for tag in json_data['tags']]
+            normalized_tags = []
+            for tag in json_data['tags']:
+                normalized = normalize_tag(tag)
+                if normalized:  # 空白でない場合のみ追加
+                    normalized_tags.append(normalized)
+            json_data['tags'] = normalized_tags
         
         return actual_fields == expected_fields
     
