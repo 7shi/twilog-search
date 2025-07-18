@@ -181,12 +181,13 @@ class TagReader:
         
         # 上位k件のインデックスを取得
         top_k = min(top_k, len(self.unique_tags))
-        top_indices = torch.topk(similarities, top_k).indices
+        top_similarities, top_indices = torch.topk(similarities, top_k)
         
         results = []
-        for idx in top_indices:
-            tag = self.unique_tags[idx.item()]
-            score = similarities[idx.item()].item()
+        for i in range(top_k):
+            idx = top_indices[i].item()
+            score = top_similarities[i].item()
+            tag = self.unique_tags[idx]
             results.append((tag, score))
         
         return results
@@ -195,7 +196,7 @@ class TagReader:
         """ベクトルの次元数を取得"""
         if self.tag_vectors is None:
             return None
-        return self.tag_vectors.shape[1]
+        return self.tag_vectors.shape[1]  # 第2次元を取得
     
     def is_data_loaded(self) -> Dict[str, bool]:
         """各データファイルの読み込み状況を取得"""
