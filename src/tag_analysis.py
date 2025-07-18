@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import csv
 from collections import Counter
 from pathlib import Path
 import sys
 import unicodedata
 import math
+from tag_reader import TagReader
 
 def get_display_width(text: str) -> int:
     """文字列の表示幅を取得（全角文字は2、半角文字は1として計算）"""
@@ -30,17 +30,14 @@ def format_with_width(text: str, width: int, align: str = 'left') -> str:
     else:  # left
         return text + ' ' * padding
 
-def load_tag_data(tsv_file: str) -> Counter:
-    """TSVファイルからタグデータを読み込み、出現回数をカウントする"""
+def load_tag_data_from_reader(reader: TagReader) -> Counter:
+    """TagReaderからタグデータを読み込み、出現回数をカウントする"""
     tag_counter = Counter()
     
-    with open(tsv_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f, delimiter='\t')
-        for row in reader:
-            # post_id以外の全カラムからタグを取得
-            for key, value in row.items():
-                if key != 'post_id' and value and value.strip():
-                    tag_counter[value.strip()] += 1
+    # 各投稿のタグを集計
+    for entry in reader.tag_data:
+        for tag in entry['tags']:
+            tag_counter[tag] += 1
     
     return tag_counter
 
@@ -128,14 +125,15 @@ def display_histogram(tag_counter: Counter):
     print(f"総タグ数: {len(tag_counter):,}個")
 
 def main():
-    tsv_file = "batch/tags.tsv"
-    
-    if not Path(tsv_file).exists():
-        print(f"エラー: {tsv_file} が見つかりません", file=sys.stderr)
-        sys.exit(1)
-    
     try:
-        tag_counter = load_tag_data(tsv_file)
+        # TagReaderを使用してデータを読み込み（ベクトル不要）
+        reader = TagReader(load_vectors=False)
+        
+        if not reader.is_data_loaded()['tsv']:
+            print("タグデータが見つかりませんでした", file=sys.stderr)
+            sys.exit(1)
+        
+        tag_counter = load_tag_data_from_reader(reader)
         
         if not tag_counter:
             print("タグデータが見つかりませんでした", file=sys.stderr)

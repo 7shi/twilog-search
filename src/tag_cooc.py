@@ -1,11 +1,11 @@
 #!/usr/bin/env python3
 
-import csv
 from collections import Counter, defaultdict
 from pathlib import Path
 import sys
 import unicodedata
 from itertools import combinations
+from tag_reader import TagReader
 
 def get_display_width(text: str) -> int:
     """文字列の表示幅を取得（全角文字は2、半角文字は1として計算）"""
@@ -30,19 +30,14 @@ def format_with_width(text: str, width: int, align: str = 'left') -> str:
     else:  # left
         return text + ' ' * padding
 
-def load_cooccurrence_data(tsv_file: str) -> Counter:
-    """TSVファイルからタグの共起データを読み込み、共起回数をカウントする"""
+def load_cooccurrence_data_from_reader(reader: TagReader) -> Counter:
+    """TagReaderからタグの共起データを読み込み、共起回数をカウントする"""
     cooc_counter = Counter()
     
-    with open(tsv_file, 'r', encoding='utf-8') as f:
-        reader = csv.DictReader(f, delimiter='\t')
-        for row in reader:
-            # post_id以外の全カラムからタグを取得
-            tags = []
-            for key, value in row.items():
-                if key != 'post_id' and value and value.strip():
-                    tags.append(value.strip())
-            
+    # 各投稿のタグから共起ペアを生成
+    for entry in reader.tag_data:
+        tags = entry['tags']
+        if len(tags) >= 2:
             # 同一投稿内のタグペアの組み合わせを生成
             for tag_pair in combinations(sorted(tags), 2):
                 cooc_counter[tag_pair] += 1
@@ -187,14 +182,15 @@ def display_tags_with_percentages(cooc_counter: Counter, top_n: int = 30):
             print(first_line)
 
 def main():
-    tsv_file = "batch/tags.tsv"
-    
-    if not Path(tsv_file).exists():
-        print(f"エラー: {tsv_file} が見つかりません", file=sys.stderr)
-        sys.exit(1)
-    
     try:
-        cooc_counter = load_cooccurrence_data(tsv_file)
+        # TagReaderを使用してデータを読み込み（ベクトル不要）
+        reader = TagReader(load_vectors=False)
+        
+        if not reader.is_data_loaded()['tsv']:
+            print("タグデータが見つかりませんでした", file=sys.stderr)
+            sys.exit(1)
+        
+        cooc_counter = load_cooccurrence_data_from_reader(reader)
         
         if not cooc_counter:
             print("共起データが見つかりませんでした", file=sys.stderr)
