@@ -192,6 +192,36 @@ class TagReader:
         
         return results
     
+    def calculate_all_tag_similarities(self, query_vector) -> Dict[str, float]:
+        """
+        クエリベクトルと全タグとの類似度を効率的に計算
+        
+        Args:
+            query_vector: 検索クエリのベクトル（torch.Tensor）
+            
+        Returns:
+            タグ名 -> 類似度スコアの辞書
+        """
+        if self.tag_vectors is None:
+            return {}
+        
+        # 遅延import
+        import torch
+        
+        # 全タグとのコサイン類似度を一括計算
+        all_similarities = torch.cosine_similarity(
+            query_vector.unsqueeze(0),  # (1, dim)
+            self.tag_vectors,           # (n_tags, dim)
+            dim=1
+        )
+        
+        # tag_to_indexを使って辞書作成
+        similarities = {}
+        for tag, index in self.tag_to_index.items():
+            similarities[tag] = float(all_similarities[index])
+        
+        return similarities
+    
     def get_vector_dimension(self) -> Optional[int]:
         """ベクトルの次元数を取得"""
         if self.tag_vectors is None:
