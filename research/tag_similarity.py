@@ -4,6 +4,10 @@ from collections import Counter
 from pathlib import Path
 import sys
 import unicodedata
+
+# プロジェクトのsrcディレクトリをパスに追加
+sys.path.insert(0, str(Path(__file__).parent.parent / 'src'))
+
 from tag_reader import TagReader
 
 def get_display_width(text: str) -> int:
