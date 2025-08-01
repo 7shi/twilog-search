@@ -311,17 +311,14 @@ class SearchEngine:
             
         Returns:
             テキスト検索ソース
-            
-        Raises:
-            ValueError: ハイブリッドモードが指定された場合
         """
         # 単一ソースモードはそのままテキスト検索ソースに変換可能
         if mode in ["content", "reasoning", "summary"]:
             return mode
         
-        # ハイブリッドモードはテキスト検索では不可能
+        # ハイブリッドモードはcontentを対象とする
         elif mode in ["average", "maximum", "minimum"]:
-            raise ValueError(f"Hybrid mode '{mode}' is not supported for text search. Use vector search instead.")
+            return "content"
         
         else:
             raise ValueError(f"Unknown mode: {mode}")
@@ -366,17 +363,18 @@ class SearchEngine:
         # テキストフィルタリング条件を準備
         text_include_terms = []
         text_exclude_terms = []
+        text_source = None
         if text_filter:
             text_include_terms, text_exclude_terms = parse_search_terms(text_filter)
+            text_source = self._convert_mode_to_source(mode)
         
         # 結果を作成（フィルタリングしながらtop_kまで収集）
         results = []
         for post_id, similarity in similarities:
             # テキストフィルタリングを適用
             if text_filter:
-                post_data = self.data_access.posts_data.get(post_id, {})
-                content = post_data.get("content", "")
-                if not self.is_text_match(content, text_include_terms, text_exclude_terms):
+                search_text = self._get_search_text(post_id, text_source)
+                if not self.is_text_match(search_text, text_include_terms, text_exclude_terms):
                     continue
             
             results.append((post_id, similarity))
