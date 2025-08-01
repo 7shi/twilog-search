@@ -31,9 +31,8 @@ class SearchEngine:
         self.reasoning_dir = reasoning_dir
         self.summary_dir = summary_dir
         
-        # メタデータを読み込み
-        metadata_path = self.embeddings_dir / "meta.json"
-        self.metadata = self._load_metadata(metadata_path)
+        # ベクトルストア（metadataも含めて初期化される）
+        self.content_store = VectorStore(str(self.embeddings_dir))
         
         # CSVパスを取得
         self.csv_path = self._load_csv_path()
@@ -51,9 +50,6 @@ class SearchEngine:
         self.user_list: List[str] = []
         self.summaries_data: Dict[int, dict] = {}
         self.tag_index: Dict[str, List[int]] = {}
-        
-        # ベクトルストア
-        self.content_store = VectorStore(str(self.embeddings_dir))
         self.reasoning_store: Optional[VectorStore] = None
         self.summary_store: Optional[VectorStore] = None
         
@@ -63,22 +59,14 @@ class SearchEngine:
         self.common_reasoning_vectors: Optional['torch.Tensor'] = None
         self.common_summary_vectors: Optional['torch.Tensor'] = None
     
-    def _load_metadata(self, metadata_path: Path) -> dict:
-        """メタデータファイルを読み込む"""
-        import json
-        try:
-            with open(metadata_path, 'r', encoding='utf-8') as f:
-                return json.load(f)
-        except (FileNotFoundError, json.JSONDecodeError) as e:
-            raise RuntimeError(f"メタデータファイルの読み込みに失敗しました: {e}")
     
     def get_model_name(self) -> str:
         """モデル名を取得"""
-        return self.metadata.get("model", "")
+        return self.content_store.metadata.get("model", "")
     
     def _load_csv_path(self) -> str:
         """meta.jsonからCSVパスを取得し、絶対パスに変換"""
-        csv_relative_path = self.metadata.get("csv_path")
+        csv_relative_path = self.content_store.metadata.get("csv_path")
         if not csv_relative_path:
             return ""
         
